@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: tutorsurvey-api
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "4000"
+      - key: TZ
+        value: Asia/Tashkent
+      - key: TELEGRAM_MODE
+        value: webhook
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tutorsurvey-db
+          property: connectionString
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: TELEGRAM_WEBHOOK_SECRET
+        generateValue: true
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: API_PUBLIC_URL
+        sync: false
+      - key: WEB_PUBLIC_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+
+databases:
+  - name: tutorsurvey-db
+    plan: starter
+    postgresMajorVersion: "16"
