@@ -26,11 +26,31 @@ export interface RegisterFlowState {
   step: 'name' | 'phone' | 'role' | 'branch' | 'done';
   fullName?: string;
   phone?: string;
-  role?: 'TUTOR' | 'TEACHER';
+  role?: 'TUTOR' | 'TEACHER' | 'PARENT' | 'STUDENT';
   branchId?: string;
 }
 
-export type FlowState = SurveyFlowState | ReportFlowState | RegisterFlowState | { kind: 'none' } | { kind: 'link' };
+export interface ChatFlowState { kind: 'chat'; groupId: string }
+export interface ParentMsgFlowState { kind: 'parentmsg'; studentId: string }
+export interface HwSubmitFlowState { kind: 'hwsubmit'; homeworkId: string; studentId: string }
+export interface AttendanceFlowState { kind: 'attendance'; groupId: string; date: string; students: { id: string; name: string }[]; index: number; marks: Record<string, 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED'>; lessonId?: string | null }
+export interface GradeFlowState { kind: 'grade'; groupId: string; subjectId: string; students: { id: string; name: string }[]; index: number; marks: Record<string, number> }
+export interface HomeworkFlowState { kind: 'homework'; step: 'subject' | 'title' | 'task' | 'deadline' | 'confirm'; groupId: string; subjectId?: string; title?: string; task?: string; deadline?: string }
+export interface DormLogFlowState { kind: 'dormlog'; step: 'student' | 'type' | 'title' | 'confirm'; studentId?: string; studentName?: string; type?: string; title?: string }
+
+export type FlowState =
+  | SurveyFlowState
+  | ReportFlowState
+  | RegisterFlowState
+  | ChatFlowState
+  | ParentMsgFlowState
+  | HwSubmitFlowState
+  | AttendanceFlowState
+  | GradeFlowState
+  | HomeworkFlowState
+  | DormLogFlowState
+  | { kind: 'none' }
+  | { kind: 'link' };
 
 export interface BotUser {
   id: string;

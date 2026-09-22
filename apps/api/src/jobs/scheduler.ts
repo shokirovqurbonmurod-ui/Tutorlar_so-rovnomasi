@@ -7,6 +7,8 @@ import { notify, notifyMany } from '../modules/notifications/notifications.servi
 import { sendSurvey, closeSurvey } from '../modules/surveys/surveys.service.js';
 import { computeKpi } from '../modules/kpi/kpi.service.js';
 import { getSetting } from '../modules/settings/settings.routes.js';
+import { runPaymentReminders, generateMonthlyInvoices } from '../modules/finance/finance.service.js';
+import { studentAudience } from '../lib/scope.js';
 
 /** Sends a reminder to everyone who hasn't finished the given survey. */
 export async function remindPending(surveyId: string) {
@@ -87,6 +89,43 @@ export async function runTaskReminders() {
   return n;
 }
 
+/** Homework deadline within 24h and not submitted → remind student + parents (once per submission). */
+export async function runHomeworkDeadlineReminders() {
+  const soon = dayjs().add(24, 'hour').toDate();
+  const subs = await prisma.homeworkSubmission.findMany({
+    where: { status: { in: ['NOT_SUBMITTED', 'REVISION'] }, remindedAt: null, homework: { deadline: { gt: new Date(), lte: soon } } },
+    include: { homework: { include: { subject: { select: { name: true } } } } },
+    take: 500,
+  });
+  let n = 0;
+  for (const s of subs) {
+    const aud = await studentAudience(s.studentId);
+    n += await notifyMany([...aud.parents, ...(aud.student ? [aud.student] : [])], {
+      type: 'HOMEWORK_DEADLINE',
+      title: `⏰ Uy vazifasi muddati yaqin — ${s.homework.subject.name}`,
+      body: `${aud.name}\n${s.homework.title}\n\n⏰ Muddat: ${dayjs(s.homework.deadline).format('DD.MM.YYYY HH:mm')}\nHolat: ${s.status === 'REVISION' ? 'Qayta ishlash kerak' : 'Topshirilmagan'}`,
+      payload: { homeworkId: s.homeworkId, studentId: s.studentId, keyboard: { inline_keyboard: [[{ text: "📝 Ko'rish", callback_data: `hw:view:${s.homeworkId}:${s.studentId}` }]] } },
+    });
+    await prisma.homeworkSubmission.update({ where: { id: s.id }, data: { remindedAt: new Date() } });
+  }
+  return n;
+}
+
+/** Tomorrow's exams → notify students + parents. */
+export async function runExamReminders() {
+  const from = dayjs().add(1, 'day').startOf('day').toDate();
+  const to = dayjs().add(1, 'day').endOf('day').toDate();
+  const exams = await prisma.exam.findMany({ where: { date: { gte: from, lte: to }, status: { not: 'CANCELLED' } }, include: { subject: true, group: { include: { students: { where: { status: 'ACTIVE' }, select: { id: true } } } } } });
+  let n = 0;
+  for (const e of exams) {
+    for (const s of e.group.students) {
+      const aud = await studentAudience(s.id);
+      n += await notifyMany([...aud.parents, ...(aud.student ? [aud.student] : [])], { type: 'EXAM', title: `📚 Ertaga imtihon — ${e.subject.name}`, body: `${aud.name}\n${e.title}\n📅 ${dayjs(e.date).format('DD.MM.YYYY HH:mm')}` });
+    }
+  }
+  return n;
+}
+
 export function startScheduler() {
   if (env.DISABLE_CRON) {
     logger.warn('Cron jobs disabled');
@@ -102,6 +141,11 @@ export function startScheduler() {
     if (dayjs().add(1, 'day').date() !== 1) return; // last day of month only
     computeKpi('MONTHLY').then((r) => logger.info(r, 'monthly KPI computed')).catch((e) => logger.error({ err: e }, 'kpi monthly'));
   }, { timezone: tz });
+  // School: payment reminders (10:00 daily), homework deadline (every hour), exams (18:00), invoices (1st of month 06:00)
+  cron.schedule('0 10 * * *', () => runPaymentReminders().then((r) => logger.info(r, 'payment reminders')).catch((e) => logger.error({ err: e }, 'payment reminders')), { timezone: tz });
+  cron.schedule('5 * * * *', () => runHomeworkDeadlineReminders().catch((e) => logger.error({ err: e }, 'homework deadline reminders')), { timezone: tz });
+  cron.schedule('0 18 * * *', () => runExamReminders().catch((e) => logger.error({ err: e }, 'exam reminders')), { timezone: tz });
+  cron.schedule('0 6 1 * *', () => generateMonthlyInvoices().then((r) => logger.info(r, 'monthly invoices generated')).catch((e) => logger.error({ err: e }, 'monthly invoices')), { timezone: tz });
   // Cleanup expired refresh tokens & link codes nightly
   cron.schedule('15 3 * * *', async () => {
     await prisma.refreshToken.deleteMany({ where: { OR: [{ expiresAt: { lt: new Date() } }, { revokedAt: { lt: dayjs().subtract(7, 'day').toDate() } }] } });

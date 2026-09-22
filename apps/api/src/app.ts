@@ -18,6 +18,20 @@ import { notificationsRouter } from './modules/notifications/notifications.route
 import { tasksRouter } from './modules/tasks/tasks.routes.js';
 import { auditRouter } from './modules/audit/audit.routes.js';
 import { settingsRouter } from './modules/settings/settings.routes.js';
+import { rolesRouter } from './modules/roles/roles.routes.js';
+import { studentsRouter } from './modules/students/students.routes.js';
+import { parentsRouter } from './modules/parents/parents.routes.js';
+import { groupsRouter } from './modules/groups/groups.routes.js';
+import { subjectsRouter } from './modules/subjects/subjects.routes.js';
+import { scheduleRouter } from './modules/schedule/schedule.routes.js';
+import { attendanceRouter } from './modules/attendance/attendance.routes.js';
+import { gradesRouter } from './modules/grades/grades.routes.js';
+import { homeworkRouter } from './modules/homework/homework.routes.js';
+import { examsRouter } from './modules/exams/exams.routes.js';
+import { messagesRouter } from './modules/messages/messages.routes.js';
+import { financeRouter } from './modules/finance/finance.routes.js';
+import { dormRouter } from './modules/dorm/dorm.routes.js';
+import { schoolRouter } from './modules/school/school.routes.js';
 import { openapi } from './docs/openapi.js';
 import { prisma } from './lib/prisma.js';
 import { telegramRouter } from './bot/index.js';
@@ -31,10 +45,15 @@ export function createApp() {
   app.use(
     cors({
       origin: (origin, cb) => {
-        if (!origin || env.corsOrigins.includes(origin) || env.corsOrigins.includes('*')) return cb(null, true);
-        // Allow preview hosts (e.g. *.e2b.app / *.vercel.app) when explicitly whitelisted by suffix
-        if (env.corsOrigins.some((o) => o.startsWith('*.') && origin.endsWith(o.slice(1)))) return cb(null, true);
-        return cb(new Error('CORS: origin not allowed'));
+        if (!origin || env.corsOrigins.includes('*') || env.corsOrigins.includes(origin)) return cb(null, true);
+        // Suffix wildcards from env (e.g. "*.vercel.app") + the web dashboard's own public URL
+        const allowedSuffix = env.corsOrigins.filter((o) => o.startsWith('*.')).map((o) => o.slice(1));
+        if (allowedSuffix.some((suf) => origin.endsWith(suf))) return cb(null, true);
+        if (env.WEB_PUBLIC_URL && origin === env.WEB_PUBLIC_URL.replace(/\/$/, '')) return cb(null, true);
+        // Local dev / sandbox previews are always fine
+        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) || /\.e2b\.app$/.test(origin)) return cb(null, true);
+        // Not allowed: answer without CORS headers (browser blocks it) instead of throwing a 500
+        return cb(null, false);
       },
       credentials: true,
     }),
@@ -55,6 +74,20 @@ export function createApp() {
   app.use('/api', apiLimiter);
   app.use('/api/auth', authRouter);
   app.use('/api/users', usersRouter);
+  app.use('/api/roles', rolesRouter);
+  app.use('/api/students', studentsRouter);
+  app.use('/api/parents', parentsRouter);
+  app.use('/api/groups', groupsRouter);
+  app.use('/api/subjects', subjectsRouter);
+  app.use('/api/schedule', scheduleRouter);
+  app.use('/api/attendance', attendanceRouter);
+  app.use('/api/grades', gradesRouter);
+  app.use('/api/homework', homeworkRouter);
+  app.use('/api/exams', examsRouter);
+  app.use('/api/messages', messagesRouter);
+  app.use('/api/finance', financeRouter);
+  app.use('/api/dorm', dormRouter);
+  app.use('/api/school', schoolRouter);
   app.use('/api/branches', branchesRouter);
   app.use('/api/surveys', surveysRouter);
   app.use('/api/reports', reportsRouter);

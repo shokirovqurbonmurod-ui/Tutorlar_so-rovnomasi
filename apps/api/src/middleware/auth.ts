@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { verifyAccess, type AccessPayload } from '../lib/jwt.js';
 import { forbidden, unauthorized } from '../lib/errors.js';
-import { hasPermission, type PermissionKey } from '../lib/permissions.js';
+import { hasPermissionAsync, type PermissionKey } from '../lib/permissions.js';
 import { prisma } from '../lib/prisma.js';
 
 declare global {
@@ -28,8 +28,10 @@ export function authenticate(req: Request, _res: Response, next: NextFunction) {
 export function requirePermission(...perms: PermissionKey[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.user) return next(unauthorized());
-    if (perms.length === 0 || perms.some((p) => hasPermission(req.user!.role, p))) return next();
-    return next(forbidden());
+    if (perms.length === 0) return next();
+    Promise.all(perms.map((p) => hasPermissionAsync(req.user!.role, req.user!.roleId, p)))
+      .then((r) => (r.some(Boolean) ? next() : next(forbidden())))
+      .catch(next);
   };
 }
 

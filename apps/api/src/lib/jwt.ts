@@ -6,6 +6,7 @@ import type { RoleKey } from '../generated/prisma/enums.js';
 export interface AccessPayload {
   sub: string;
   role: RoleKey;
+  roleId?: string;
   branchId: string | null;
   name: string;
 }

@@ -7,7 +7,7 @@ import * as kb from '../keyboards/index.js';
 import { esc, safeAnswerCb } from '../utils.js';
 import { Markup } from 'telegraf';
 
-export const WELCOME = `Assalomu alaykum! 👋\n\nXususiy maktab boshqaruv botiga xush kelibsiz.`;
+export const WELCOME = `🎯 <b>TARGET INTERNATIONAL SCHOOL</b>\n\nAssalomu alaykum! 👋 Maktab boshqaruv botiga xush kelibsiz.`;
 
 /**
  * Secure verification: a Telegram account becomes a system user only via
@@ -19,21 +19,21 @@ export async function startUnknown(ctx: BotContext) {
   const tgId = ctx.from!.id;
   // Super admin bootstrap via env
   if (env.superAdminTelegramIds.includes(String(tgId))) {
-    const role = await prisma.role.findUniqueOrThrow({ where: { key: 'SUPER_ADMIN' } });
+    const role = await prisma.role.findUniqueOrThrow({ where: { slug: 'SUPER_ADMIN' } });
     const u = await prisma.user.create({
       data: { fullName: [ctx.from!.first_name, ctx.from!.last_name].filter(Boolean).join(' ') || 'Super Admin', telegramId: BigInt(tgId), telegramChatId: BigInt(ctx.chat!.id), telegramUsername: ctx.from!.username, roleId: role.id, status: 'ACTIVE', position: 'Super Admin' },
     });
     audit({ userId: u.id, action: 'auth.telegram_bootstrap', source: 'telegram' });
-    return ctx.reply(`${WELCOME}\n\n🛡 Siz Super Admin sifatida ro'yxatdan o'tdingiz.`, kb.mainMenu('SUPER_ADMIN'));
+    return ctx.reply(`${WELCOME}\n\n🛡 Siz Super Admin sifatida ro'yxatdan o'tdingiz.`, { parse_mode: 'HTML', ...kb.mainMenu('SUPER_ADMIN') });
   }
   await ctx.setFlow({ kind: 'none' });
   return ctx.reply(
     `${WELCOME}\n\nSizni tizimda topa olmadik. Davom etish uchun variantni tanlang:`,
-    Markup.inlineKeyboard([
+    { parse_mode: 'HTML', ...Markup.inlineKeyboard([
       [Markup.button.callback("🔑 Kod bilan ulash (admin bergan)", 'reg:link')],
       [Markup.button.callback("📱 Telefon raqam orqali", 'reg:phone')],
       [Markup.button.callback("📝 Ro'yxatdan o'tish (tasdiqlash talab etiladi)", 'reg:start')],
-    ]),
+    ]) },
   );
 }
 
@@ -117,7 +117,7 @@ async function continueRegister(ctx: BotContext, state: RegisterFlowState) {
   return ctx.reply('🏷 Lavozimingizni tanlang:', kb.roleChoiceKeyboard());
 }
 
-export async function chooseRole(ctx: BotContext, role: 'TUTOR' | 'TEACHER') {
+export async function chooseRole(ctx: BotContext, role: 'TUTOR' | 'TEACHER' | 'PARENT' | 'STUDENT') {
   await safeAnswerCb(ctx);
   const state = ctx.flow as RegisterFlowState;
   const branches = await prisma.branch.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
@@ -135,7 +135,7 @@ export async function chooseBranch(ctx: BotContext, branchId: string) {
 }
 
 async function finishRegister(ctx: BotContext, state: RegisterFlowState) {
-  const role = await prisma.role.findUniqueOrThrow({ where: { key: state.role ?? 'TUTOR' } });
+  const role = await prisma.role.findUniqueOrThrow({ where: { slug: state.role ?? 'TUTOR' } });
   const tgId = BigInt(ctx.from!.id);
   const user = await prisma.user.upsert({
     where: { telegramId: tgId },

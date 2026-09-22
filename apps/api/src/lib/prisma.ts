@@ -9,4 +9,10 @@ export const prisma = new PrismaClient({
   log: env.isProd ? ['error'] : ['warn', 'error'],
 });
 
+import { registerPermissionResolver, type PermissionKey } from './permissions.js';
+registerPermissionResolver(async (roleId) => {
+  const rows = await prisma.rolePermission.findMany({ where: { roleId }, select: { permission: { select: { key: true } } } });
+  return rows.map((r) => r.permission.key as PermissionKey);
+});
+
 export type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];

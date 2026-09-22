@@ -19,6 +19,7 @@ usersRouter.use(authenticate);
 
 const listSchema = paginationSchema.extend({
   role: z.nativeEnum(RoleKey).optional(),
+  roleId: z.string().optional(),
   status: z.nativeEnum(UserStatus).optional(),
   branchId: z.string().optional(),
   departmentId: z.string().optional(),
@@ -26,7 +27,7 @@ const listSchema = paginationSchema.extend({
 });
 
 const userInclude = {
-  role: { select: { key: true, name: true } },
+  role: { select: { id: true, key: true, name: true, slug: true, color: true } },
   branch: { select: { id: true, name: true, code: true } },
   department: { select: { id: true, name: true } },
   _count: { select: { assignments: true, reports: true, responses: true } },
@@ -37,7 +38,8 @@ const createSchema = z.object({
   email: z.string().email().optional().nullable(),
   phone: z.string().min(7).max(20).optional().nullable(),
   password: z.string().min(8).optional(),
-  role: z.nativeEnum(RoleKey),
+  role: z.nativeEnum(RoleKey).optional(),
+  roleId: z.string().optional(),
   branchId: z.string().optional().nullable(),
   departmentId: z.string().optional().nullable(),
   position: z.string().max(120).optional().nullable(),
@@ -47,6 +49,7 @@ const createSchema = z.object({
   telegramId: z.string().regex(/^\d+$/).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
   joinDate: z.coerce.date().optional(),
+  avatarUrl: z.string().max(500).optional().nullable(),
 });
 const updateSchema = createSchema.partial();
 
@@ -65,6 +68,7 @@ usersRouter.get(
     const where: Prisma.UserWhereInput = {
       ...scopeForRole(req),
       ...(p.role ? { role: { key: p.role } } : {}),
+      ...(p.roleId ? { roleId: p.roleId } : {}),
       ...(p.status ? { status: p.status } : {}),
       ...(p.branchId ? { branchId: p.branchId } : {}),
       ...(p.departmentId ? { departmentId: p.departmentId } : {}),
@@ -138,10 +142,18 @@ usersRouter.post(
   validate(createSchema),
   asyncHandler(async (req, res) => {
     const body = req.body as z.infer<typeof createSchema>;
-    assertRoleAssignable(req.user!.role, body.role);
-    const role = await prisma.role.findUniqueOrThrow({ where: { key: body.role } });
-    if (['SUPER_ADMIN', 'DIRECTOR', 'CEO', 'HR_ADMIN'].includes(body.role) && !body.email) {
+    const role = await resolveRole(body);
+    assertRoleAssignable(req.user!.role, role.key);
+    if (['SUPER_ADMIN', 'DIRECTOR', 'CEO'].includes(role.key) && !body.email) {
       throw badRequest('Boshqaruv xodimlari uchun email majburiy');
+    }
+    if (body.email) {
+      const dup = await prisma.user.findUnique({ where: { email: body.email.toLowerCase() } });
+      if (dup) throw badRequest('Bu email allaqachon ro\'yxatdan o\'tgan');
+    }
+    if (body.phone) {
+      const dup = await prisma.user.findUnique({ where: { phone: body.phone } });
+      if (dup) throw badRequest('Bu telefon raqam allaqachon ro\'yxatdan o\'tgan');
     }
     const user = await prisma.user.create({
       data: {
@@ -159,10 +171,11 @@ usersRouter.post(
         telegramId: body.telegramId ? BigInt(body.telegramId) : null,
         notes: body.notes ?? null,
         joinDate: body.joinDate,
+        avatarUrl: body.avatarUrl ?? null,
       },
       include: userInclude,
     });
-    audit({ userId: req.user!.sub, action: 'user.create', entity: 'User', entityId: user.id, meta: { role: body.role }, ip: req.ip });
+    audit({ userId: req.user!.sub, action: 'user.create', entity: 'User', entityId: user.id, meta: { role: role.key }, ip: req.ip });
     res.status(201).json(serialize(stripHash(user)));
   }),
 );
@@ -176,7 +189,8 @@ usersRouter.patch(
     const existing = await prisma.user.findUnique({ where: { id: pid(req) }, include: { role: true } });
     if (!existing) throw notFound('Foydalanuvchi topilmadi');
     if (existing.role.key === 'SUPER_ADMIN' && req.user!.role !== 'SUPER_ADMIN') throw forbidden();
-    if (body.role) assertRoleAssignable(req.user!.role, body.role);
+    const newRole = body.role || body.roleId ? await resolveRole(body) : null;
+    if (newRole) assertRoleAssignable(req.user!.role, newRole.key);
 
     const data: Prisma.UserUncheckedUpdateInput = {
       fullName: body.fullName,
@@ -191,9 +205,10 @@ usersRouter.patch(
       telegramId: body.telegramId === undefined ? undefined : body.telegramId ? BigInt(body.telegramId) : null,
       notes: body.notes,
       joinDate: body.joinDate,
+      avatarUrl: body.avatarUrl,
     };
     if (body.password) data.passwordHash = await hashPassword(body.password);
-    if (body.role) data.roleId = (await prisma.role.findUniqueOrThrow({ where: { key: body.role } })).id;
+    if (newRole) data.roleId = newRole.id;
 
     const user = await prisma.user.update({ where: { id: pid(req) }, data, include: userInclude });
     if (body.status && body.status !== 'ACTIVE') {
@@ -229,9 +244,27 @@ usersRouter.post(
   }),
 );
 
+async function resolveRole(body: { role?: RoleKey; roleId?: string }) {
+  if (body.roleId) {
+    const r = await prisma.role.findUnique({ where: { id: body.roleId } });
+    if (!r) throw badRequest('Rol topilmadi');
+    return r;
+  }
+  if (!body.role || body.role === 'CUSTOM') throw badRequest('Rol tanlanmagan');
+  const r = await prisma.role.findUnique({ where: { slug: body.role } });
+  if (!r) throw badRequest('Rol topilmadi');
+  return r;
+}
+
+const MANAGEMENT: RoleKey[] = ['SUPER_ADMIN', 'DIRECTOR', 'CEO', 'IT_ADMIN'];
 function assertRoleAssignable(actor: RoleKey, target: RoleKey) {
   if (actor === 'SUPER_ADMIN') return;
-  if (actor === 'HR_ADMIN' && ['TUTOR', 'TEACHER'].includes(target)) return;
+  if (target === 'SUPER_ADMIN') throw forbidden('Super Admin rolini faqat Super Admin tayinlaydi');
+  if (actor === 'DIRECTOR' && !MANAGEMENT.includes(target)) return;
+  if (actor === 'IT_ADMIN' && !MANAGEMENT.includes(target)) return;
+  if (actor === 'HR_ADMIN' && !MANAGEMENT.includes(target)) return;
+  if (actor === 'ADMINISTRATOR' && ['PARENT', 'STUDENT'].includes(target)) return;
+  if (actor === 'RECEPTION' && ['PARENT', 'STUDENT'].includes(target)) return;
   throw forbidden("Bu rolni tayinlash uchun ruxsatingiz yo'q");
 }
 

@@ -17,6 +17,15 @@ const schema = z.object({
   TELEGRAM_MODE: z.enum(['polling', 'webhook']).default('polling'),
   TELEGRAM_WEBHOOK_SECRET: z.string().default('change-me'),
   TELEGRAM_SUPER_ADMIN_IDS: z.string().default(''),
+  // Super admin bootstrap (seed) — never hardcode credentials in code
+  SUPER_ADMIN_EMAIL: z.string().default('admin@target-school.uz'),
+  SUPER_ADMIN_PASSWORD: z.string().optional(),
+  SUPER_ADMIN_PHONE: z.string().optional(),
+  SUPER_ADMIN_NAME: z.string().default('Jumayev Baxtbek'),
+  SEED_DEMO: z
+    .string()
+    .default('true')
+    .transform((v) => v === 'true'),
   TZ: z.string().default('Asia/Tashkent'),
   DISABLE_BOT: z
     .string()

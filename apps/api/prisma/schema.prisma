@@ -20,6 +20,15 @@ enum RoleKey {
   HR_ADMIN
   TUTOR
   TEACHER
+  PARENT
+  STUDENT
+  ACCOUNTANT
+  ADMINISTRATOR
+  DORM_MANAGER
+  RECEPTION
+  MARKETING
+  IT_ADMIN
+  CUSTOM
 }
 
 enum UserStatus {
@@ -85,6 +94,17 @@ enum ReportStatus {
 }
 
 enum NotificationType {
+  GRADE
+  ATTENDANCE
+  HOMEWORK
+  HOMEWORK_DEADLINE
+  HOMEWORK_REVIEWED
+  PAYMENT_DUE
+  PAYMENT_RECEIVED
+  SCHEDULE_CHANGED
+  GROUP_MESSAGE
+  DORM_INCIDENT
+  EXAM
   SURVEY_ASSIGNED
   SURVEY_DEADLINE
   SURVEY_COMPLETED
@@ -143,9 +163,11 @@ enum KpiPeriod {
 
 model Role {
   id          String           @id @default(cuid())
-  key         RoleKey          @unique
+  key         RoleKey // system role kind; custom roles use CUSTOM
+  slug        String           @unique // e.g. "DIRECTOR" or "custom-librarian"
   name        String // Uzbek label, e.g. "Direktor"
   description String?
+  color       String?
   isSystem    Boolean          @default(true)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
@@ -194,6 +216,12 @@ model Branch {
   departments  Department[]
   groups       Group[]
   surveys      Survey[]
+  students     Student[]
+  subjects     Subject[]
+  rooms        Room[]
+  dormitories  Dormitory[]
+  expenses     Expense[]
+  invoices     Invoice[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -213,70 +241,114 @@ model Department {
 }
 
 model Group {
-  id           String   @id @default(cuid())
-  name         String // e.g. "IELTS-12"
-  subject      String?
-  branchId     String
-  branch       Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  tutorId      String?
-  tutor        User?    @relation("GroupTutor", fields: [tutorId], references: [id], onDelete: SetNull)
-  teacherId    String?
-  teacher      User?    @relation("GroupTeacher", fields: [teacherId], references: [id], onDelete: SetNull)
-  studentCount Int      @default(0)
-  isActive     Boolean  @default(true)
-  reports      Report[]
-  createdAt    DateTime @default(now())
+  id              String         @id @default(cuid())
+  name            String // e.g. "7-A"
+  subject         String?
+  gradeLevel      Int? // 1..11
+  academicYear    String? // "2026-2027"
+  room            String?
+  branchId        String
+  branch          Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  tutorId         String?
+  tutor           User?          @relation("GroupTutor", fields: [tutorId], references: [id], onDelete: SetNull)
+  teacherId       String?
+  teacher         User?          @relation("GroupTeacher", fields: [teacherId], references: [id], onDelete: SetNull)
+  studentCount    Int            @default(0)
+  isActive        Boolean        @default(true)
+  allowParentChat Boolean        @default(true)
+  reports         Report[]
+  students        Student[]
+  teachers        GroupTeacher[]
+  lessons         Lesson[]
+  homeworks       Homework[]
+  exams           Exam[]
+  messages        GroupMessage[]
+  grades          Grade[]
+  attendance      Attendance[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @default(now()) @updatedAt
 
+  @@unique([name, branchId])
   @@map("groups")
+}
+
+/**
+ * Subject teachers assigned to a group (many-to-many).
+ */
+model GroupTeacher {
+  groupId   String
+  group     Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  teacherId String
+  teacher   User    @relation("GroupSubjectTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, teacherId, subjectId])
+  @@map("group_teachers")
 }
 
 // ───────────────────────────── Users ─────────────────────────────────────────
 
 model User {
-  id               String     @id @default(cuid())
+  id               String      @id @default(cuid())
   fullName         String
-  email            String?    @unique
-  phone            String?    @unique
+  email            String?     @unique
+  phone            String?     @unique
   passwordHash     String? // null for Telegram-only users
-  telegramId       BigInt?    @unique
+  telegramId       BigInt?     @unique
   telegramUsername String?
   telegramChatId   BigInt?
   avatarUrl        String?
-  language         Language   @default(UZ)
+  language         Language    @default(UZ)
   roleId           String
-  role             Role       @relation(fields: [roleId], references: [id])
+  role             Role        @relation(fields: [roleId], references: [id])
   branchId         String?
-  branch           Branch?    @relation("BranchMembers", fields: [branchId], references: [id], onDelete: SetNull)
+  branch           Branch?     @relation("BranchMembers", fields: [branchId], references: [id], onDelete: SetNull)
   departmentId     String?
   department       Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   position         String?
-  status           UserStatus @default(ACTIVE)
-  joinDate         DateTime   @default(now())
+  status           UserStatus  @default(ACTIVE)
+  joinDate         DateTime    @default(now())
   lastActivityAt   DateTime?
   lastLoginAt      DateTime?
   notes            String?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
-  directedBranch      Branch?            @relation("BranchDirector")
-  ceoBranches         Branch[]           @relation("BranchCeo")
-  tutorGroups         Group[]            @relation("GroupTutor")
-  teacherGroups       Group[]            @relation("GroupTeacher")
-  createdSurveys      Survey[]           @relation("SurveyCreator")
-  assignments         SurveyAssignment[]
-  responses           SurveyResponse[]
-  reports             Report[]           @relation("ReportAuthor")
-  reviewedReports     Report[]           @relation("ReportReviewer")
-  notifications       Notification[]
-  announcements       Announcement[]     @relation("AnnouncementAuthor")
-  announcementReads   AnnouncementRead[]
-  assignedTasks       Task[]             @relation("TaskAssignee")
-  createdTasks        Task[]             @relation("TaskCreator")
-  kpiResults          KpiResult[]
-  auditLogs           AuditLog[]
-  refreshTokens       RefreshToken[]
-  telegramSessions    TelegramSession[]
-  telegramLinkCodes   TelegramLinkCode[]
+  directedBranch    Branch?              @relation("BranchDirector")
+  ceoBranches       Branch[]             @relation("BranchCeo")
+  tutorGroups       Group[]              @relation("GroupTutor")
+  teacherGroups     Group[]              @relation("GroupTeacher")
+  subjectGroups     GroupTeacher[]       @relation("GroupSubjectTeacher")
+  studentProfile    Student?             @relation("StudentUser")
+  parentProfile     Parent?              @relation("ParentUser")
+  taughtLessons     Lesson[]             @relation("LessonTeacher")
+  givenGrades       Grade[]              @relation("GradeTeacher")
+  markedAttendance  Attendance[]         @relation("AttendanceMarker")
+  homeworksCreated  Homework[]           @relation("HomeworkAuthor")
+  homeworkReviews   HomeworkSubmission[] @relation("HomeworkReviewer")
+  groupMessages     GroupMessage[]       @relation("GroupMessageAuthor")
+  paymentsRecorded  Payment[]            @relation("PaymentRecorder")
+  expensesRecorded  Expense[]            @relation("ExpenseRecorder")
+  managedDorms      Dormitory[]          @relation("DormManager")
+  dormLogs          DormLog[]            @relation("DormLogAuthor")
+  examsCreated      Exam[]               @relation("ExamAuthor")
+  schedulesCreated  Schedule[]           @relation("ScheduleAuthor")
+  createdSurveys    Survey[]             @relation("SurveyCreator")
+  assignments       SurveyAssignment[]
+  responses         SurveyResponse[]
+  reports           Report[]             @relation("ReportAuthor")
+  reviewedReports   Report[]             @relation("ReportReviewer")
+  notifications     Notification[]
+  announcements     Announcement[]       @relation("AnnouncementAuthor")
+  announcementReads AnnouncementRead[]
+  assignedTasks     Task[]               @relation("TaskAssignee")
+  createdTasks      Task[]               @relation("TaskCreator")
+  kpiResults        KpiResult[]
+  auditLogs         AuditLog[]
+  refreshTokens     RefreshToken[]
+  telegramSessions  TelegramSession[]
+  telegramLinkCodes TelegramLinkCode[]
 
   @@index([roleId])
   @@index([branchId])
@@ -285,15 +357,15 @@ model User {
 }
 
 model RefreshToken {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash String   @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
   userAgent String?
   ip        String?
   expiresAt DateTime
   revokedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId])
   @@map("refresh_tokens")
@@ -402,19 +474,19 @@ model SurveyAssignment {
 }
 
 model SurveyResponse {
-  id          String         @id @default(cuid())
-  surveyId    String
-  survey      Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
-  userId      String? // null when survey is anonymous
-  user        User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id           String         @id @default(cuid())
+  surveyId     String
+  survey       Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  userId       String? // null when survey is anonymous
+  user         User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   branchIdSnap String? // denormalised for analytics even when anonymous
-  roleKeySnap RoleKey?
-  source      String         @default("telegram") // telegram | web
-  startedAt   DateTime       @default(now())
-  submittedAt DateTime?
-  durationSec Int?
-  avgRating   Float? // average of RATING questions in this response
-  answers     SurveyAnswer[]
+  roleKeySnap  RoleKey?
+  source       String         @default("telegram") // telegram | web
+  startedAt    DateTime       @default(now())
+  submittedAt  DateTime?
+  durationSec  Int?
+  avgRating    Float? // average of RATING questions in this response
+  answers      SurveyAnswer[]
 
   @@index([surveyId])
   @@index([userId])
@@ -442,24 +514,24 @@ model SurveyAnswer {
 // ───────────────────────────── Reports ───────────────────────────────────────
 
 model Report {
-  id           String       @id @default(cuid())
-  type         ReportType
-  title        String
-  content      String
-  status       ReportStatus @default(PENDING)
-  authorId     String
-  author       User         @relation("ReportAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  groupId      String?
-  group        Group?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  periodStart  DateTime?
-  periodEnd    DateTime?
-  reviewerId   String?
-  reviewer     User?        @relation("ReportReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
-  reviewNote   String?
-  reviewedAt   DateTime?
-  attachments  Json         @default("[]")
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id          String       @id @default(cuid())
+  type        ReportType
+  title       String
+  content     String
+  status      ReportStatus @default(PENDING)
+  authorId    String
+  author      User         @relation("ReportAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  groupId     String?
+  group       Group?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  periodStart DateTime?
+  periodEnd   DateTime?
+  reviewerId  String?
+  reviewer    User?        @relation("ReportReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviewNote  String?
+  reviewedAt  DateTime?
+  attachments Json         @default("[]")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   @@index([authorId])
   @@index([status])
@@ -490,21 +562,21 @@ model Task {
 // ───────────────────────────── Announcements ─────────────────────────────────
 
 model Announcement {
-  id         String               @id @default(cuid())
-  title      String
-  body       String
-  priority   AnnouncementPriority @default(NORMAL)
-  audience   SurveyAudience       @default(ALL)
-  branchId   String?
-  isPinned   Boolean              @default(false)
-  publishAt  DateTime             @default(now())
-  expiresAt  DateTime?
-  authorId   String
-  author     User                 @relation("AnnouncementAuthor", fields: [authorId], references: [id])
-  reads      AnnouncementRead[]
-  sentCount  Int                  @default(0)
-  createdAt  DateTime             @default(now())
-  updatedAt  DateTime             @updatedAt
+  id        String               @id @default(cuid())
+  title     String
+  body      String
+  priority  AnnouncementPriority @default(NORMAL)
+  audience  SurveyAudience       @default(ALL)
+  branchId  String?
+  isPinned  Boolean              @default(false)
+  publishAt DateTime             @default(now())
+  expiresAt DateTime?
+  authorId  String
+  author    User                 @relation("AnnouncementAuthor", fields: [authorId], references: [id])
+  reads     AnnouncementRead[]
+  sentCount Int                  @default(0)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
 
   @@map("announcements")
 }
@@ -584,17 +656,17 @@ model KpiResult {
 // ───────────────────────────── Audit & settings ──────────────────────────────
 
 model AuditLog {
-  id         String   @id @default(cuid())
-  userId     String?
-  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  action     String // e.g. "survey.create"
-  entity     String? // e.g. "Survey"
-  entityId   String?
-  meta       Json?
-  ip         String?
-  userAgent  String?
-  source     String   @default("web") // web | telegram | system
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String // e.g. "survey.create"
+  entity    String? // e.g. "Survey"
+  entityId  String?
+  meta      Json?
+  ip        String?
+  userAgent String?
+  source    String   @default("web") // web | telegram | system
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([action])
@@ -608,4 +680,545 @@ model Setting {
   updatedAt DateTime @updatedAt
 
   @@map("settings")
+}
+
+// ═════════════════════════════ SCHOOL DOMAIN ═════════════════════════════════
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum StudentStatus {
+  ACTIVE
+  GRADUATED
+  EXPELLED
+  ON_LEAVE
+  ARCHIVED
+}
+
+enum Weekday {
+  MON
+  TUE
+  WED
+  THU
+  FRI
+  SAT
+  SUN
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum GradeKind {
+  LESSON
+  HOMEWORK
+  QUIZ
+  EXAM
+  PROJECT
+  BEHAVIOR
+}
+
+enum HomeworkStatus {
+  NOT_SUBMITTED
+  SUBMITTED
+  ACCEPTED
+  REVISION
+  GRADED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  PAYME
+  CLICK
+  OTHER
+}
+
+enum InvoiceStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum DormLogType {
+  CHECK_IN
+  CHECK_OUT
+  LATE
+  ABSENT
+  INCIDENT
+  ROOM_ISSUE
+  NOTE
+}
+
+enum DormLogSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum ExamStatus {
+  PLANNED
+  DONE
+  CANCELLED
+}
+
+model Subject {
+  id            String         @id @default(cuid())
+  name          String // "Matematika"
+  code          String? // "MATH"
+  color         String? // hex accent for schedule
+  branchId      String?
+  branch        Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  isActive      Boolean        @default(true)
+  lessons       Lesson[]
+  grades        Grade[]
+  homeworks     Homework[]
+  exams         Exam[]
+  groupTeachers GroupTeacher[]
+  createdAt     DateTime       @default(now())
+
+  @@unique([name, branchId])
+  @@map("subjects")
+}
+
+model Room {
+  id       String   @id @default(cuid())
+  name     String // "204"
+  building String?
+  floor    Int?
+  capacity Int?
+  branchId String
+  branch   Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  lessons  Lesson[]
+
+  @@unique([name, branchId])
+  @@map("rooms")
+}
+
+model Parent {
+  id         String          @id @default(cuid())
+  userId     String          @unique
+  user       User            @relation("ParentUser", fields: [userId], references: [id], onDelete: Cascade)
+  occupation String?
+  workplace  String?
+  address    String?
+  relation   String? // "Ota" | "Ona" | "Vasiy"
+  children   StudentParent[]
+  createdAt  DateTime        @default(now())
+
+  @@map("parents")
+}
+
+model Student {
+  id              String               @id @default(cuid())
+  userId          String?              @unique // optional Telegram/web account for the student
+  user            User?                @relation("StudentUser", fields: [userId], references: [id], onDelete: SetNull)
+  firstName       String
+  lastName        String
+  middleName      String?
+  fullName        String
+  gender          Gender?
+  birthDate       DateTime?
+  studentCode     String               @unique // "TIS-2026-0001"
+  phone           String?
+  address         String?
+  avatarUrl       String?
+  branchId        String
+  branch          Branch               @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  groupId         String?
+  group           Group?               @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  status          StudentStatus        @default(ACTIVE)
+  enrolledAt      DateTime             @default(now())
+  monthlyFee      Decimal              @default(0) @db.Decimal(14, 2)
+  discountPercent Int                  @default(0)
+  discountNote    String?
+  isBoarder       Boolean              @default(false) // lives in dormitory
+  notes           String?
+  parents         StudentParent[]
+  grades          Grade[]
+  attendance      Attendance[]
+  submissions     HomeworkSubmission[]
+  examResults     ExamResult[]
+  invoices        Invoice[]
+  payments        Payment[]
+  dormAssignment  DormAssignment?
+  dormLogs        DormLog[]
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([branchId])
+  @@index([groupId])
+  @@index([status])
+  @@map("students")
+}
+
+model StudentParent {
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  parentId  String
+  parent    Parent  @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  relation  String? // "Ota" | "Ona"
+  isPrimary Boolean @default(false)
+
+  @@id([studentId, parentId])
+  @@map("student_parents")
+}
+
+// ───────────────────────────── Schedule ──────────────────────────────────────
+
+model Schedule {
+  id        String    @id @default(cuid())
+  name      String // "2026-2027 I chorak"
+  validFrom DateTime
+  validTo   DateTime?
+  isActive  Boolean   @default(true)
+  authorId  String?
+  author    User?     @relation("ScheduleAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  lessons   Lesson[]
+  createdAt DateTime  @default(now())
+
+  @@map("schedules")
+}
+
+model Lesson {
+  id         String       @id @default(cuid())
+  scheduleId String?
+  schedule   Schedule?    @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  groupId    String
+  group      Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  subjectId  String
+  subject    Subject      @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  teacherId  String?
+  teacher    User?        @relation("LessonTeacher", fields: [teacherId], references: [id], onDelete: SetNull)
+  roomId     String?
+  room       Room?        @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  weekday    Weekday
+  startTime  String // "09:00"
+  endTime    String // "09:45"
+  order      Int          @default(1)
+  note       String?
+  attendance Attendance[]
+  grades     Grade[]
+  createdAt  DateTime     @default(now())
+
+  @@index([groupId, weekday])
+  @@map("lessons")
+}
+
+// ───────────────────────────── Attendance & grades ───────────────────────────
+
+model Attendance {
+  id          String           @id @default(cuid())
+  studentId   String
+  student     Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  groupId     String
+  group       Group            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  lessonId    String?
+  lesson      Lesson?          @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  date        DateTime         @db.Date
+  status      AttendanceStatus
+  lateMinutes Int?
+  reason      String?
+  markedById  String?
+  markedBy    User?            @relation("AttendanceMarker", fields: [markedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([studentId, date, lessonId])
+  @@index([groupId, date])
+  @@index([studentId, date])
+  @@map("attendance")
+}
+
+model Grade {
+  id        String    @id @default(cuid())
+  studentId String
+  student   Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  groupId   String?
+  group     Group?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  subjectId String
+  subject   Subject   @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  lessonId  String?
+  lesson    Lesson?   @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  teacherId String?
+  teacher   User?     @relation("GradeTeacher", fields: [teacherId], references: [id], onDelete: SetNull)
+  date      DateTime  @db.Date
+  value     Int // 1..5 (or 0..100 when maxValue = 100)
+  maxValue  Int       @default(5)
+  kind      GradeKind @default(LESSON)
+  comment   String?
+  createdAt DateTime  @default(now())
+
+  @@index([studentId, date])
+  @@index([subjectId])
+  @@map("grades")
+}
+
+// ───────────────────────────── Homework ──────────────────────────────────────
+
+model Homework {
+  id           String               @id @default(cuid())
+  groupId      String
+  group        Group                @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  subjectId    String
+  subject      Subject              @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  authorId     String
+  author       User                 @relation("HomeworkAuthor", fields: [authorId], references: [id])
+  title        String // mavzu
+  task         String // topshiriq
+  fileUrl      String?
+  fileName     String?
+  note         String?
+  deadline     DateTime
+  maxScore     Int                  @default(5)
+  reminderSent Boolean              @default(false)
+  submissions  HomeworkSubmission[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([groupId, deadline])
+  @@map("homeworks")
+}
+
+model HomeworkSubmission {
+  id             String         @id @default(cuid())
+  homeworkId     String
+  homework       Homework       @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status         HomeworkStatus @default(NOT_SUBMITTED)
+  content        String?
+  fileUrl        String?
+  fileName       String?
+  telegramFileId String?
+  score          Int?
+  feedback       String?
+  submittedAt    DateTime?
+  reviewedAt     DateTime?
+  reviewerId     String?
+  reviewer       User?          @relation("HomeworkReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  attempts       Int            @default(0)
+  remindedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([homeworkId, studentId])
+  @@map("homework_submissions")
+}
+
+// ───────────────────────────── Exams ─────────────────────────────────────────
+
+model Exam {
+  id        String       @id @default(cuid())
+  title     String
+  groupId   String
+  group     Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject      @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  authorId  String?
+  author    User?        @relation("ExamAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  date      DateTime
+  maxScore  Int          @default(100)
+  status    ExamStatus   @default(PLANNED)
+  note      String?
+  results   ExamResult[]
+  createdAt DateTime     @default(now())
+
+  @@map("exams")
+}
+
+model ExamResult {
+  examId    String
+  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  score     Int
+  grade     Int? // 1..5 derived
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@id([examId, studentId])
+  @@map("exam_results")
+}
+
+// ───────────────────────────── Group chat ────────────────────────────────────
+
+model GroupMessage {
+  id        String         @id @default(cuid())
+  groupId   String
+  group     Group          @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User           @relation("GroupMessageAuthor", fields: [authorId], references: [id])
+  body      String
+  replyToId String?
+  replyTo   GroupMessage?  @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   GroupMessage[] @relation("MessageReply")
+  source    String         @default("web") // web | telegram
+  isPinned  Boolean        @default(false)
+  createdAt DateTime       @default(now())
+
+  @@index([groupId, createdAt])
+  @@map("group_messages")
+}
+
+// ───────────────────────────── Finance ───────────────────────────────────────
+
+model Invoice {
+  id             String        @id @default(cuid())
+  number         String        @unique // "INV-2026-09-0001"
+  studentId      String
+  student        Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch        @relation(fields: [branchId], references: [id])
+  period         String // "2026-09"
+  title          String        @default("Oylik to'lov")
+  amount         Decimal       @db.Decimal(14, 2) // gross
+  discount       Decimal       @default(0) @db.Decimal(14, 2)
+  total          Decimal       @db.Decimal(14, 2) // amount - discount
+  paid           Decimal       @default(0) @db.Decimal(14, 2)
+  dueDate        DateTime
+  status         InvoiceStatus @default(PENDING)
+  note           String?
+  reminderSentAt DateTime?
+  payments       Payment[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([studentId, period])
+  @@index([status, dueDate])
+  @@map("invoices")
+}
+
+model Payment {
+  id           String        @id @default(cuid())
+  invoiceId    String?
+  invoice      Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  studentId    String
+  student      Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  amount       Decimal       @db.Decimal(14, 2)
+  method       PaymentMethod @default(CASH)
+  paidAt       DateTime      @default(now())
+  receiptNo    String?
+  note         String?
+  recordedById String?
+  recordedBy   User?         @relation("PaymentRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime      @default(now())
+
+  @@index([studentId, paidAt])
+  @@map("payments")
+}
+
+model Expense {
+  id           String   @id @default(cuid())
+  branchId     String?
+  branch       Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  category     String // "Ish haqi", "Ijara", "Kommunal", ...
+  title        String
+  amount       Decimal  @db.Decimal(14, 2)
+  spentAt      DateTime @default(now())
+  note         String?
+  recordedById String?
+  recordedBy   User?    @relation("ExpenseRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+
+  @@index([spentAt])
+  @@map("expenses")
+}
+
+// ───────────────────────────── Dormitory ─────────────────────────────────────
+
+model Dormitory {
+  id        String         @id @default(cuid())
+  name      String // "Asosiy yotoqxona"
+  address   String?
+  branchId  String
+  branch    Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  managerId String?
+  manager   User?          @relation("DormManager", fields: [managerId], references: [id], onDelete: SetNull)
+  buildings DormBuilding[]
+  createdAt DateTime       @default(now())
+
+  @@map("dormitories")
+}
+
+model DormBuilding {
+  id          String     @id @default(cuid())
+  dormitoryId String
+  dormitory   Dormitory  @relation(fields: [dormitoryId], references: [id], onDelete: Cascade)
+  name        String // "A bino"
+  floors      Int        @default(1)
+  rooms       DormRoom[]
+
+  @@unique([dormitoryId, name])
+  @@map("dorm_buildings")
+}
+
+model DormRoom {
+  id         String       @id @default(cuid())
+  buildingId String
+  building   DormBuilding @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  number     String // "201"
+  floor      Int
+  capacity   Int          @default(4)
+  gender     Gender?
+  condition  String       @default("GOOD") // GOOD | NEEDS_REPAIR | CLOSED
+  note       String?
+  beds       DormBed[]
+  logs       DormLog[]
+
+  @@unique([buildingId, number])
+  @@map("dorm_rooms")
+}
+
+model DormBed {
+  id         String          @id @default(cuid())
+  roomId     String
+  room       DormRoom        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  label      String // "1", "2", "A"
+  assignment DormAssignment?
+
+  @@unique([roomId, label])
+  @@map("dorm_beds")
+}
+
+model DormAssignment {
+  id         String    @id @default(cuid())
+  studentId  String    @unique
+  student    Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  bedId      String    @unique
+  bed        DormBed   @relation(fields: [bedId], references: [id], onDelete: Cascade)
+  checkInAt  DateTime  @default(now())
+  checkOutAt DateTime?
+  note       String?
+
+  @@map("dorm_assignments")
+}
+
+model DormLog {
+  id         String          @id @default(cuid())
+  studentId  String?
+  student    Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  roomId     String?
+  room       DormRoom?       @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  type       DormLogType
+  severity   DormLogSeverity @default(INFO)
+  title      String
+  body       String?
+  occurredAt DateTime        @default(now())
+  authorId   String?
+  author     User?           @relation("DormLogAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  notified   Boolean         @default(false)
+  createdAt  DateTime        @default(now())
+
+  @@index([studentId, occurredAt])
+  @@index([type])
+  @@map("dorm_logs")
 }

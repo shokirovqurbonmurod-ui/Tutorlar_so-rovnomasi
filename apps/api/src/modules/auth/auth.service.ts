@@ -4,7 +4,7 @@ import { prisma } from '../../lib/prisma.js';
 import { env } from '../../config/env.js';
 import { hashToken, signAccess, signRefresh, ttlToMs, verifyRefresh } from '../../lib/jwt.js';
 import { forbidden, unauthorized, badRequest } from '../../lib/errors.js';
-import { DASHBOARD_ROLES, ROLE_PERMISSIONS, PERMISSIONS, type PermissionKey } from '../../lib/permissions.js';
+import { DASHBOARD_ROLES, permissionsForRole } from '../../lib/permissions.js';
 import { audit } from '../../lib/audit.js';
 
 const userSelect = {
@@ -19,7 +19,7 @@ const userSelect = {
   telegramId: true,
   telegramUsername: true,
   lastLoginAt: true,
-  role: { select: { key: true, name: true } },
+  role: { select: { id: true, key: true, name: true, slug: true } },
   branch: { select: { id: true, name: true, code: true } },
   department: { select: { id: true, name: true } },
 } as const;
@@ -29,9 +29,6 @@ export interface ClientMeta {
   userAgent?: string;
 }
 
-export function permissionsFor(role: keyof typeof ROLE_PERMISSIONS): PermissionKey[] {
-  return role === 'SUPER_ADMIN' ? (Object.keys(PERMISSIONS) as PermissionKey[]) : ROLE_PERMISSIONS[role];
-}
 
 async function issueTokens(userId: string, meta: ClientMeta) {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: userSelect });
@@ -49,6 +46,7 @@ async function issueTokens(userId: string, meta: ClientMeta) {
   const accessToken = signAccess({
     sub: user.id,
     role: user.role.key,
+    roleId: user.role.id,
     branchId: user.branch?.id ?? null,
     name: user.fullName,
   });
@@ -56,7 +54,7 @@ async function issueTokens(userId: string, meta: ClientMeta) {
     accessToken,
     refreshToken,
     expiresIn: Math.floor(ttlToMs(env.JWT_ACCESS_TTL) / 1000),
-    user: { ...user, telegramId: user.telegramId?.toString() ?? null, permissions: permissionsFor(user.role.key) },
+    user: { ...user, telegramId: user.telegramId?.toString() ?? null, permissions: await permissionsForRole(user.role.key, user.role.id) },
   };
 }
 
@@ -108,7 +106,7 @@ export async function logout(token: string | undefined, userId?: string) {
 export async function me(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: userSelect });
   if (!user) throw unauthorized();
-  return { ...user, telegramId: user.telegramId?.toString() ?? null, permissions: permissionsFor(user.role.key) };
+  return { ...user, telegramId: user.telegramId?.toString() ?? null, permissions: await permissionsForRole(user.role.key, user.role.id) };
 }
 
 export async function changePassword(userId: string, current: string, next: string) {

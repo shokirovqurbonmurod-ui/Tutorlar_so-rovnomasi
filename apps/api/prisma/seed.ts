@@ -1,24 +1,28 @@
 /**
- * Demo seed — creates roles, permissions, branches, ~30 employees, surveys with
- * 90 days of realistic responses, reports, announcements, tasks, KPI results.
+ * TARGET INTERNATIONAL SCHOOL — database seed.
  *
- *   npm run db:seed          (idempotent for roles/permissions/metrics;
- *                             demo data is re-created only when DB has no users)
- *   SEED_FORCE=true npm run db:seed   → wipe & re-seed demo data
+ *  Always (idempotent):  roles (slug = key), permissions, role_permissions, KPI metrics,
+ *                        settings, super admin from .env (SUPER_ADMIN_EMAIL / _PASSWORD / _PHONE / _NAME).
+ *  Demo data (SEED_DEMO=true, default): branches, staff, subjects, rooms, groups, students,
+ *                        parents, timetable, attendance, grades, homework, exams, invoices, payments,
+ *                        expenses, dormitory, messages, announcements — only when DB has no students,
+ *                        or when SEED_FORCE=true (wipes demo data first).
+ *
+ *  Nothing secret is hardcoded here: the super admin password MUST come from .env.
  */
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import dayjs from 'dayjs';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client.js';
-import type { QuestionType, ReportStatus, ReportType, RoleKey } from '../src/generated/prisma/enums.js';
-import { PERMISSIONS, ROLE_PERMISSIONS, ROLE_LABELS } from '../src/lib/permissions.js';
-import { KPI_DEFAULTS, computeKpi } from '../src/modules/kpi/kpi.service.js';
+import type { AttendanceStatus, RoleKey, Weekday } from '../src/generated/prisma/enums.js';
+import { PERMISSIONS, ROLE_PERMISSIONS, ROLE_LABELS, SYSTEM_ROLE_KEYS } from '../src/lib/permissions.js';
+import { KPI_DEFAULTS } from '../src/modules/kpi/kpi.service.js';
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) });
 
 // deterministic pseudo-random so demo looks the same on every machine
-let seed = 20240917;
+let seed = 20260922;
 const rnd = () => {
   seed = (seed * 1664525 + 1013904223) % 4294967296;
   return seed / 4294967296;
@@ -26,374 +30,434 @@ const rnd = () => {
 const pick = <T>(arr: T[]): T => arr[Math.floor(rnd() * arr.length)];
 const int = (min: number, max: number) => Math.floor(rnd() * (max - min + 1)) + min;
 const chance = (p: number) => rnd() < p;
+const ROUNDS = Number(process.env.BCRYPT_ROUNDS ?? 10);
+const hash = (pw: string) => bcrypt.hash(pw, ROUNDS);
 
-const PASSWORDS = {
-  SUPER_ADMIN: 'Admin123!',
-  DIRECTOR: 'Director123!',
-  CEO: 'Ceo123!',
-  HR_ADMIN: 'Hr123!',
-  TUTOR: 'Tutor123!',
-  TEACHER: 'Teacher123!',
-} as const;
+const BOY = ['Ali', 'Jasur', 'Sardor', 'Bobur', 'Otabek', 'Farrux', 'Shaxzod', 'Umid', 'Javohir', 'Doston', 'Rustam', 'Islom', 'Temur', 'Akmal', 'Bekzod', 'Aziz', 'Diyor', 'Samandar', 'Mirjalol', 'Abror'];
+const GIRL = ['Dilnoza', 'Malika', 'Nilufar', 'Gulnora', 'Zarina', 'Madina', 'Kamola', 'Sevara', 'Nodira', 'Laylo', 'Mohira', 'Dildora', 'Shahnoza', 'Feruza', 'Nargiza', 'Ziyoda', 'Munisa', 'Sitora', 'Iroda', 'Gulbahor'];
+const LAST_M = ['Karimov', 'Toshmatov', 'Abdullayev', 'Xolmatov', 'Ergashev', 'Qodirov', 'Tursunov', 'Sobirov', 'Rasulov', 'Mahmudov', 'Yusupov', 'Ismoilov', 'Saidov', 'Mirzayev', 'Nazarov', 'Alimov', 'Usmonov', 'Hamidov', 'Jalilov', 'Rahimov'];
+const fem = (l: string) => l.replace(/ov$/, 'ova').replace(/ev$/, 'eva');
 
-const FIRST = ['Aziz', 'Dilnoza', 'Jasur', 'Malika', 'Sardor', 'Nilufar', 'Bobur', 'Gulnora', 'Otabek', 'Zarina', 'Farrux', 'Madina', 'Shaxzod', 'Kamola', 'Umid', 'Sevara', 'Javohir', 'Nodira', 'Doston', 'Laylo', 'Rustam', 'Mohira', 'Islom', 'Dildora', 'Temur', 'Shahnoza', 'Akmal', 'Feruza', 'Bekzod', 'Nargiza'];
-const LAST = ['Karimov', 'Rahimova', 'Toshmatov', 'Yusupova', 'Abdullayev', 'Ismoilova', 'Xolmatov', 'Saidova', 'Ergashev', 'Mirzayeva', 'Qodirov', 'Nazarova', 'Tursunov', 'Alimova', 'Sobirov', 'Usmonova', 'Rasulov', 'Hamidova', 'Mahmudov', 'Jalilova'];
-const SUBJECTS = ['Ingliz tili', 'Matematika', 'IELTS', 'Rus tili', 'Fizika', 'Kimyo', 'Biologiya', 'Informatika', 'Ona tili', 'Tarix'];
+const SUBJECTS: Array<{ name: string; code: string; color: string }> = [
+  { name: 'Matematika', code: 'MATH', color: '#2563eb' },
+  { name: 'Ingliz tili', code: 'ENG', color: '#e11d48' },
+  { name: 'Ona tili', code: 'UZB', color: '#16a34a' },
+  { name: 'Rus tili', code: 'RUS', color: '#7c3aed' },
+  { name: 'Fizika', code: 'PHYS', color: '#0891b2' },
+  { name: 'Kimyo', code: 'CHEM', color: '#ea580c' },
+  { name: 'Biologiya', code: 'BIO', color: '#65a30d' },
+  { name: 'Tarix', code: 'HIST', color: '#a16207' },
+  { name: 'Informatika', code: 'IT', color: '#0f766e' },
+  { name: 'Geografiya', code: 'GEO', color: '#4f46e5' },
+  { name: 'Jismoniy tarbiya', code: 'PE', color: '#db2777' },
+];
+const WD: Weekday[] = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const SLOTS: Array<[string, string]> = [['08:30', '09:15'], ['09:25', '10:10'], ['10:20', '11:05'], ['11:25', '12:10'], ['12:20', '13:05'], ['13:15', '14:00']];
 
+// ─────────────────────────────────────────────────────────────────────────────
 async function ensureCore() {
-  // roles
-  for (const key of Object.keys(ROLE_LABELS) as RoleKey[]) {
-    await prisma.role.upsert({ where: { key }, create: { key, name: ROLE_LABELS[key] }, update: { name: ROLE_LABELS[key] } });
+  for (const key of SYSTEM_ROLE_KEYS) {
+    await prisma.role.upsert({ where: { slug: key }, create: { key, slug: key, name: ROLE_LABELS[key], isSystem: true }, update: { name: ROLE_LABELS[key], key } });
   }
-  // permissions
   for (const [key, description] of Object.entries(PERMISSIONS)) {
     await prisma.permission.upsert({ where: { key }, create: { key, group: key.split('.')[0], description }, update: { description } });
   }
-  const roles = await prisma.role.findMany();
+  const roles = await prisma.role.findMany({ where: { isSystem: true } });
   const perms = await prisma.permission.findMany();
   for (const r of roles) {
-    const keys = r.key === 'SUPER_ADMIN' ? Object.keys(PERMISSIONS) : ROLE_PERMISSIONS[r.key];
+    const keys: string[] = r.key === 'SUPER_ADMIN' ? Object.keys(PERMISSIONS) : ROLE_PERMISSIONS[r.key];
     await prisma.rolePermission.deleteMany({ where: { roleId: r.id } });
     await prisma.rolePermission.createMany({ data: perms.filter((p) => keys.includes(p.key)).map((p) => ({ roleId: r.id, permissionId: p.id })), skipDuplicates: true });
   }
-  // KPI metrics
   for (const m of KPI_DEFAULTS) {
     await prisma.kpiMetric.upsert({ where: { key: m.key }, create: { ...m, appliesTo: m.key === 'TUTOR_ACTIVITY' ? ['TUTOR'] : m.key === 'TEACHER_ACTIVITY' ? ['TEACHER'] : ['TUTOR', 'TEACHER'] }, update: { name: m.name, description: m.description } });
   }
-  console.log('✔ Roles, permissions, KPI metrics ready');
+  await prisma.setting.upsert({ where: { key: 'org.name' }, create: { key: 'org.name', value: 'TARGET INTERNATIONAL SCHOOL' }, update: { value: 'TARGET INTERNATIONAL SCHOOL' } });
+  await prisma.setting.upsert({ where: { key: 'org.shortName' }, create: { key: 'org.shortName', value: 'TARGET' }, update: {} });
+  await prisma.setting.upsert({ where: { key: 'finance.dueDay' }, create: { key: 'finance.dueDay', value: 10 }, update: {} });
+  await prisma.setting.upsert({ where: { key: 'finance.currency' }, create: { key: 'finance.currency', value: 'UZS' }, update: {} });
+  console.log('✔ Roles, permissions, KPI metrics, settings ready');
 }
 
-async function wipeDemo() {
+/** Super admin — Jumayev Baxtbek (Bosh Admin, Yunusobod). Credentials come from .env only. */
+async function ensureSuperAdmin(branchId: string | null) {
+  const email = process.env.SUPER_ADMIN_EMAIL ?? 'admin@target-school.uz';
+  const password = process.env.SUPER_ADMIN_PASSWORD;
+  const phone = process.env.SUPER_ADMIN_PHONE ?? null;
+  const fullName = process.env.SUPER_ADMIN_NAME ?? 'Jumayev Baxtbek';
+  const role = await prisma.role.findUniqueOrThrow({ where: { slug: 'SUPER_ADMIN' } });
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (!password && !existing) {
+    console.error('❌ SUPER_ADMIN_PASSWORD is not set in .env — cannot create the super admin. Add it and re-run the seed.');
+    process.exit(1);
+  }
+  const data = { fullName, phone, roleId: role.id, branchId, position: 'Bosh Admin / Super Admin', status: 'ACTIVE' as const };
+  const u = existing
+    ? await prisma.user.update({ where: { id: existing.id }, data: { ...data, ...(password ? { passwordHash: await hash(password) } : {}) } })
+    : await prisma.user.create({ data: { ...data, email, passwordHash: await hash(password!) } });
+  console.log(`✔ Super admin: ${u.fullName} <${email}>${password ? ' (password from .env)' : ''}`);
+  return u;
+}
+
+async function wipeDemo(keepEmail: string) {
   await prisma.$transaction([
     prisma.auditLog.deleteMany(), prisma.notification.deleteMany(), prisma.kpiResult.deleteMany(), prisma.task.deleteMany(),
     prisma.announcementRead.deleteMany(), prisma.announcement.deleteMany(), prisma.report.deleteMany(),
     prisma.surveyAnswer.deleteMany(), prisma.surveyResponse.deleteMany(), prisma.surveyAssignment.deleteMany(), prisma.survey.deleteMany(),
-    prisma.group.deleteMany(), prisma.refreshToken.deleteMany(), prisma.telegramLinkCode.deleteMany(), prisma.telegramSession.deleteMany(),
-    prisma.user.deleteMany(), prisma.department.deleteMany(), prisma.branch.deleteMany(), prisma.setting.deleteMany(),
+    prisma.dormLog.deleteMany(), prisma.dormAssignment.deleteMany(), prisma.dormBed.deleteMany(), prisma.dormRoom.deleteMany(), prisma.dormBuilding.deleteMany(), prisma.dormitory.deleteMany(),
+    prisma.payment.deleteMany(), prisma.invoice.deleteMany(), prisma.expense.deleteMany(),
+    prisma.examResult.deleteMany(), prisma.exam.deleteMany(), prisma.homeworkSubmission.deleteMany(), prisma.homework.deleteMany(),
+    prisma.grade.deleteMany(), prisma.attendance.deleteMany(), prisma.groupMessage.deleteMany(), prisma.lesson.deleteMany(), prisma.schedule.deleteMany(),
+    prisma.groupTeacher.deleteMany(), prisma.studentParent.deleteMany(), prisma.student.deleteMany(), prisma.parent.deleteMany(),
+    prisma.group.deleteMany(), prisma.room.deleteMany(), prisma.subject.deleteMany(),
+    prisma.refreshToken.deleteMany(), prisma.telegramLinkCode.deleteMany(), prisma.telegramSession.deleteMany(),
+    prisma.user.deleteMany({ where: { email: { not: keepEmail } } }), prisma.department.deleteMany(), prisma.branch.deleteMany(),
   ]);
   console.log('✔ Demo data wiped');
 }
 
-async function seedDemo() {
-  const roleId = Object.fromEntries((await prisma.role.findMany()).map((r) => [r.key, r.id])) as Record<RoleKey, string>;
-  const hash = async (pw: string) => bcrypt.hash(pw, 10);
-  const daysAgo = (n: number, h = 10) => dayjs().subtract(n, 'day').hour(h).minute(int(0, 59)).toDate();
+// ─────────────────────────────────────────────────────────────────────────────
+async function seedDemo(superAdminId: string) {
+  const roleId = Object.fromEntries((await prisma.role.findMany({ where: { isSystem: true } })).map((r) => [r.key, r.id])) as Record<RoleKey, string>;
+  const daysAgo = (n: number, h = 10) => dayjs().subtract(n, 'day').hour(h).minute(int(0, 59)).second(0).toDate();
+  const demoPw = process.env.SEED_DEMO_PASSWORD ?? 'Target2026!';
+  const demoHash = await hash(demoPw);
 
   // ── Branches ──
-  const branchData = [
-    { name: 'Chilonzor filiali', code: 'CHL', city: 'Toshkent', address: "Chilonzor tumani, Bunyodkor ko'chasi 12", phone: '+998 71 200 10 01', studentCount: 420 },
-    { name: 'Yunusobod filiali', code: 'YUN', city: 'Toshkent', address: "Yunusobod tumani, Amir Temur ko'chasi 88", phone: '+998 71 200 10 02', studentCount: 365 },
-    { name: 'Samarqand filiali', code: 'SAM', city: 'Samarqand', address: "Registon ko'chasi 5", phone: '+998 66 233 10 03', studentCount: 280 },
-  ];
-  const branches = [];
-  for (const b of branchData) branches.push(await prisma.branch.create({ data: b }));
+  const yun = await prisma.branch.create({ data: { name: 'Yunusobod', code: 'YUN', city: 'Toshkent', address: "Yunusobod tumani, Amir Temur ko'chasi 88", phone: '+998 71 200 10 02' } });
+  const chl = await prisma.branch.create({ data: { name: 'Chilonzor', code: 'CHL', city: 'Toshkent', address: "Chilonzor tumani, Bunyodkor ko'chasi 12", phone: '+998 71 200 10 01' } });
+  const branches = [yun, chl];
+  await prisma.user.update({ where: { id: superAdminId }, data: { branchId: yun.id } });
 
-  // departments
-  const deptNames = ['Akademik bo\'lim', 'Tutorlik xizmati', 'Sifat nazorati', 'HR bo\'limi'];
+  const deptNames = ["Akademik bo'lim", 'Tutorlik xizmati', 'Ma\'muriyat', 'Buxgalteriya', 'Yotoqxona', 'IT'];
   const depts: Record<string, string> = {};
-  for (const b of branches) for (const n of deptNames) depts[`${b.id}:${n}`] = (await prisma.department.create({ data: { name: n, branchId: b.id } })).id;
+  for (const b of branches) for (const n of deptNames) depts[`${b.code}:${n}`] = (await prisma.department.create({ data: { name: n, branchId: b.id } })).id;
 
-  // ── Management users ──
-  const superAdmin = await prisma.user.create({ data: { fullName: 'Sherzod Nurmatov', email: 'admin@tutorsurvey.uz', phone: '+998901000001', passwordHash: await hash(PASSWORDS.SUPER_ADMIN), roleId: roleId.SUPER_ADMIN, position: 'Tizim administratori', joinDate: daysAgo(400), lastActivityAt: new Date(), lastLoginAt: daysAgo(0) } });
-  const ceo = await prisma.user.create({ data: { fullName: 'Akbar Yuldashev', email: 'ceo@tutorsurvey.uz', phone: '+998901000002', passwordHash: await hash(PASSWORDS.CEO), roleId: roleId.CEO, position: 'Bosh direktor (CEO)', joinDate: daysAgo(380), lastActivityAt: daysAgo(0), lastLoginAt: daysAgo(1) } });
-  const hr = await prisma.user.create({ data: { fullName: 'Gulchehra Sattorova', email: 'hr@tutorsurvey.uz', phone: '+998901000003', passwordHash: await hash(PASSWORDS.HR_ADMIN), roleId: roleId.HR_ADMIN, position: 'HR menejer', branchId: branches[0].id, departmentId: depts[`${branches[0].id}:HR bo'limi`], joinDate: daysAgo(300), lastActivityAt: daysAgo(0), lastLoginAt: daysAgo(0) } });
-  const directors = [];
-  const dirNames = ['Dilshod Rahmonov', 'Nargiza Tursunova', 'Bahodir Ergashev'];
-  for (let i = 0; i < branches.length; i++) {
-    const d = await prisma.user.create({ data: { fullName: dirNames[i], email: i === 0 ? 'director@tutorsurvey.uz' : `director.${branches[i].code.toLowerCase()}@tutorsurvey.uz`, phone: `+99890100001${i}`, passwordHash: await hash(PASSWORDS.DIRECTOR), roleId: roleId.DIRECTOR, position: 'Filial direktori', branchId: branches[i].id, joinDate: daysAgo(350 - i * 20), lastActivityAt: daysAgo(int(0, 2)), lastLoginAt: daysAgo(int(0, 3)) } });
-    directors.push(d);
-    await prisma.branch.update({ where: { id: branches[i].id }, data: { directorId: d.id, ceoId: ceo.id } });
+  // ── Management & staff (web logins) ──
+  let phoneN = 1000100;
+  let tgN = 700000001;
+  const nextPhone = () => `+99890${String(phoneN++).slice(-7)}`;
+  const mk = async (o: { name: string; role: RoleKey; email?: string; branch?: typeof yun; position: string; dept?: string; tg?: boolean; status?: 'ACTIVE' | 'PENDING' | 'INACTIVE' }) =>
+    prisma.user.create({
+      data: {
+        fullName: o.name, email: o.email ?? null, phone: nextPhone(), passwordHash: o.email ? demoHash : null, roleId: roleId[o.role], branchId: o.branch?.id ?? null,
+        departmentId: o.branch && o.dept ? depts[`${o.branch.code}:${o.dept}`] : null, position: o.position, status: o.status ?? 'ACTIVE',
+        telegramId: o.tg === false ? null : BigInt(tgN++), telegramUsername: o.tg === false ? null : o.name.toLowerCase().replace(/[^a-z]/g, '').slice(0, 8), joinDate: daysAgo(int(60, 600)), lastActivityAt: daysAgo(int(0, 3), int(8, 20)), lastLoginAt: daysAgo(int(0, 5)),
+      },
+    });
+
+  const ceo = await mk({ name: 'Akbar Yuldashev', role: 'CEO', email: 'ceo@target-school.uz', position: 'Bosh direktor (CEO)' });
+  const dirYun = await mk({ name: 'Dilshod Rahmonov', role: 'DIRECTOR', email: 'director@target-school.uz', branch: yun, position: 'Filial direktori', dept: "Ma'muriyat" });
+  const dirChl = await mk({ name: 'Nargiza Tursunova', role: 'DIRECTOR', email: 'director.chl@target-school.uz', branch: chl, position: 'Filial direktori', dept: "Ma'muriyat" });
+  await prisma.branch.update({ where: { id: yun.id }, data: { directorId: dirYun.id, ceoId: ceo.id } });
+  await prisma.branch.update({ where: { id: chl.id }, data: { directorId: dirChl.id, ceoId: ceo.id } });
+  const hr = await mk({ name: 'Gulchehra Sattorova', role: 'HR_ADMIN', email: 'hr@target-school.uz', branch: yun, position: 'HR menejer', dept: "Ma'muriyat" });
+  const accountant = await mk({ name: 'Bahodir Ergashev', role: 'ACCOUNTANT', email: 'accountant@target-school.uz', branch: yun, position: 'Bosh buxgalter', dept: 'Buxgalteriya' });
+  const administrator = await mk({ name: 'Madina Alimova', role: 'ADMINISTRATOR', email: 'admin.yun@target-school.uz', branch: yun, position: 'Administrator', dept: "Ma'muriyat" });
+  const komendant = await mk({ name: 'Rustam Mahmudov', role: 'DORM_MANAGER', email: 'dorm@target-school.uz', branch: yun, position: 'Yotoqxona komendanti', dept: 'Yotoqxona' });
+  await mk({ name: 'Sevara Usmonova', role: 'RECEPTION', email: 'reception@target-school.uz', branch: yun, position: 'Reception', dept: "Ma'muriyat" });
+  await mk({ name: 'Javohir Rasulov', role: 'MARKETING', email: 'marketing@target-school.uz', branch: yun, position: 'Marketing menejeri', dept: "Ma'muriyat" });
+  await mk({ name: 'Otabek Saidov', role: 'IT_ADMIN', email: 'it@target-school.uz', branch: yun, position: 'IT administrator', dept: 'IT' });
+
+  // ── Subjects & rooms ──
+  const subjects = [] as Array<{ id: string; name: string; code: string | null }>;
+  for (const s of SUBJECTS) subjects.push(await prisma.subject.create({ data: { ...s } }));
+  const subj = (code: string) => subjects.find((s) => s.code === code)!;
+  const rooms: Record<string, Array<{ id: string; name: string }>> = {};
+  for (const b of branches) {
+    rooms[b.id] = [];
+    for (let f = 1; f <= 3; f++) for (let r = 1; r <= 4; r++) rooms[b.id].push(await prisma.room.create({ data: { name: `${f}0${r}`, floor: f, capacity: 24, branchId: b.id, building: 'Asosiy bino' } }));
+    rooms[b.id].push(await prisma.room.create({ data: { name: 'Sport zali', floor: 1, capacity: 40, branchId: b.id } }));
+    rooms[b.id].push(await prisma.room.create({ data: { name: 'IT lab', floor: 2, capacity: 20, branchId: b.id } }));
   }
 
-  // ── Tutors & teachers ──
-  const staff: Array<{ id: string; role: RoleKey; branchId: string; fullName: string }> = [];
+  // ── Teachers & tutors ──
+  type Staff = { id: string; fullName: string; branchId: string; subjectCode?: string };
+  const teachers: Record<string, Staff[]> = {};
+  const tutors: Record<string, Staff[]> = {};
   const usedNames = new Set<string>();
-  const nextName = () => {
+  const person = (gender: 'M' | 'F') => {
     let n = '';
-    do n = `${pick(FIRST)} ${pick(LAST)}`;
+    do n = gender === 'M' ? `${pick(BOY)} ${pick(LAST_M)}` : `${pick(GIRL)} ${fem(pick(LAST_M))}`;
     while (usedNames.has(n));
     usedNames.add(n);
     return n;
   };
-  let phoneCounter = 200;
-  let tgCounter = 700000001;
-  for (const [bi, b] of branches.entries()) {
-    const nTutors = [5, 4, 3][bi];
-    const nTeachers = [6, 5, 4][bi];
-    for (let i = 0; i < nTutors + nTeachers; i++) {
-      const isTutor = i < nTutors;
-      const fullName = nextName();
-      const demo = bi === 0 && i === 0 ? 'tutor@tutorsurvey.uz' : bi === 0 && i === nTutors ? 'teacher@tutorsurvey.uz' : null;
-      const status = chance(0.9) ? 'ACTIVE' : pick(['INACTIVE', 'PENDING'] as const);
-      const u = await prisma.user.create({
-        data: {
-          fullName,
-          email: demo,
-          phone: `+99890${String(1000000 + phoneCounter++).slice(-7)}`,
-          passwordHash: demo ? await hash(isTutor ? PASSWORDS.TUTOR : PASSWORDS.TEACHER) : null,
-          roleId: isTutor ? roleId.TUTOR : roleId.TEACHER,
-          branchId: b.id,
-          departmentId: depts[`${b.id}:${isTutor ? 'Tutorlik xizmati' : "Akademik bo'lim"}`],
-          position: isTutor ? pick(['Tutor', 'Katta tutor', 'Tutor-mentor']) : `${pick(SUBJECTS)} o'qituvchisi`,
-          status,
-          telegramId: chance(0.85) ? BigInt(tgCounter++) : null,
-          telegramUsername: chance(0.7) ? fullName.toLowerCase().replace(/[^a-z]/g, '').slice(0, 6) + int(10, 99) : null,
-          joinDate: daysAgo(int(30, 500)),
-          lastActivityAt: status === 'ACTIVE' ? daysAgo(int(0, 6), int(8, 21)) : daysAgo(int(20, 60)),
-        },
-      });
-      staff.push({ id: u.id, role: isTutor ? 'TUTOR' : 'TEACHER', branchId: b.id, fullName });
+  for (const b of branches) {
+    teachers[b.id] = [];
+    tutors[b.id] = [];
+    const codes = b.id === yun.id ? SUBJECTS.map((s) => s.code) : SUBJECTS.slice(0, 7).map((s) => s.code);
+    for (const [i, code] of codes.entries()) {
+      const name = i === 0 && b.id === yun.id ? 'Sherzod Nurmatov' : person(chance(0.5) ? 'M' : 'F');
+      const u = await mk({ name, role: 'TEACHER', email: i === 0 && b.id === yun.id ? 'teacher@target-school.uz' : undefined, branch: b, position: `${subj(code).name} o'qituvchisi`, dept: "Akademik bo'lim" });
+      teachers[b.id].push({ id: u.id, fullName: u.fullName, branchId: b.id, subjectCode: code });
     }
-    // groups
-    const tutors = staff.filter((s) => s.branchId === b.id && s.role === 'TUTOR');
-    const teachers = staff.filter((s) => s.branchId === b.id && s.role === 'TEACHER');
-    for (let g = 0; g < 8; g++) {
-      const subj = pick(SUBJECTS);
-      await prisma.group.create({ data: { name: `${subj.split(' ')[0].slice(0, 4).toUpperCase()}-${bi + 1}${g + 1}`, subject: subj, branchId: b.id, tutorId: pick(tutors).id, teacherId: pick(teachers).id, studentCount: int(8, 18) } });
+    const nTutors = b.id === yun.id ? 5 : 3;
+    for (let i = 0; i < nTutors; i++) {
+      const name = i === 0 && b.id === yun.id ? 'Kamola Yusupova' : person(chance(0.5) ? 'M' : 'F');
+      const u = await mk({ name, role: 'TUTOR', email: i === 0 && b.id === yun.id ? 'tutor@target-school.uz' : undefined, branch: b, position: 'Tutor', dept: 'Tutorlik xizmati' });
+      tutors[b.id].push({ id: u.id, fullName: u.fullName, branchId: b.id });
     }
   }
-  const active = staff.filter(Boolean);
-  console.log(`✔ ${branches.length} branches, ${staff.length + 6} users`);
 
-  // ── Surveys ──
-  type Q = { type: QuestionType; text: string; hint?: string; isRequired?: boolean; options?: string[] };
-  const weeklyTutorQs: Q[] = [
-    { type: 'RATING', text: "Ushbu hafta darslar qanday o'tdi?", hint: '1 — juda yomon, 5 — a\'lo' },
-    { type: 'LONG_TEXT', text: "O'quvchilar bilan qanday muammolar bo'ldi?", isRequired: false },
-    { type: 'TEXT', text: "Qaysi guruhga qo'shimcha yordam kerak?", isRequired: false },
-    { type: 'LONG_TEXT', text: 'Ushbu hafta qanday natijaga erishdingiz?' },
-    { type: 'MULTIPLE_CHOICE', text: 'Maktab boshqaruvidan qanday yordam kerak?', options: ["O'quv materiallari", 'Texnik jihozlar', 'Ota-onalar bilan aloqa', "Qo'shimcha trening", 'Kerak emas'] },
-    { type: 'LONG_TEXT', text: 'Takliflaringiz?', isRequired: false },
-  ];
-  const teacherLessonQs: Q[] = [
-    { type: 'RATING', text: "Bu haftadagi darslarning sifatini baholang" },
-    { type: 'NUMBER', text: "Nechta dars o'tdingiz?" },
-    { type: 'SINGLE_CHOICE', text: "O'quvchilar davomati qanday?", options: ['90%+', '75-90%', '50-75%', '50% dan kam'] },
-    { type: 'YES_NO', text: "O'quv rejasidan orqada qolganmisiz?" },
-    { type: 'LONG_TEXT', text: "Qiyinchilik tug'dirgan mavzular", isRequired: false },
-  ];
-  const satisfactionQs: Q[] = [
-    { type: 'RATING', text: 'Ish sharoitidan qanchalik mamnunsiz?' },
-    { type: 'RATING', text: 'Rahbariyat bilan muloqotni baholang' },
-    { type: 'RATING', text: 'Ish yuklamasi qanchalik maqbul?' },
-    { type: 'YES_NO', text: 'Kelgusi yilda ham biz bilan ishlashni rejalashtiryapsizmi?' },
-    { type: 'SINGLE_CHOICE', text: 'Eng katta motivatsiya manbai?', options: ['Maosh', 'Jamoa', "O'quvchilar natijasi", "O'sish imkoniyati", 'Boshqa'] },
-    { type: 'LONG_TEXT', text: 'Nimani o\'zgartirgan bo\'lardingiz?', isRequired: false },
-  ];
-  const monthlyQs: Q[] = [
-    { type: 'RATING', text: 'Oylik natijalaringizni baholang' },
-    { type: 'NUMBER', text: 'Nechta o\'quvchi bilan individual ishladingiz?' },
-    { type: 'MULTIPLE_CHOICE', text: 'Qaysi yo\'nalishlarda o\'sish bo\'ldi?', options: ['Davomat', "O'zlashtirish", 'Intizom', 'Ota-onalar bilan aloqa', 'Imtihon natijalari'] },
-    { type: 'LONG_TEXT', text: 'Keyingi oy uchun rejalaringiz' },
-  ];
+  // ── Groups (classes), students, parents ──
+  const parentRole = roleId.PARENT;
+  const studentRole = roleId.STUDENT;
+  let studentSeq = 1;
+  const year = dayjs().year();
+  const allStudents: Array<{ id: string; groupId: string; branchId: string; fullName: string; userId: string | null; parentUserIds: string[]; isBoarder: boolean; monthlyFee: number; discountPercent: number }> = [];
+  const allGroups: Array<{ id: string; name: string; branchId: string; tutorId: string; gradeLevel: number; teacherIds: Record<string, string> }> = [];
+  const schedule = await prisma.schedule.create({ data: { name: `${year}-${year + 1} I chorak`, validFrom: dayjs(`${year}-09-01`).toDate(), authorId: superAdminId } });
 
-  const makeSurvey = async (o: { title: string; description: string; qs: Q[]; audience: 'ALL' | 'TUTORS' | 'TEACHERS' | 'BRANCH'; branchId?: string; sentDaysAgo: number | null; status: 'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED'; deadlineDays?: number; anonymous?: boolean; createdBy?: string; scheduledIn?: number }) => {
-    const sentAt = o.sentDaysAgo === null ? null : daysAgo(o.sentDaysAgo, 9);
-    return prisma.survey.create({
-      data: {
-        title: o.title,
-        description: o.description,
-        audience: o.audience,
-        branchId: o.branchId ?? null,
-        isAnonymous: o.anonymous ?? false,
-        status: o.status,
-        sentAt,
-        scheduledAt: o.scheduledIn ? dayjs().add(o.scheduledIn, 'day').hour(9).minute(0).toDate() : null,
-        deadline: sentAt ? dayjs(sentAt).add(o.deadlineDays ?? 3, 'day').hour(21).minute(0).toDate() : o.scheduledIn ? dayjs().add(o.scheduledIn + 3, 'day').hour(21).toDate() : null,
-        closedAt: o.status === 'COMPLETED' || o.status === 'ARCHIVED' ? dayjs(sentAt ?? new Date()).add(o.deadlineDays ?? 3, 'day').toDate() : null,
-        createdById: o.createdBy ?? directors[0].id,
-        createdAt: sentAt ? dayjs(sentAt).subtract(1, 'day').toDate() : daysAgo(int(1, 5)),
-        questions: { create: o.qs.map((q, i) => ({ order: i + 1, type: q.type, text: q.text, hint: q.hint, isRequired: q.isRequired ?? true, minValue: q.type === 'RATING' ? 1 : null, maxValue: q.type === 'RATING' ? 5 : null, options: q.options ? { create: q.options.map((label, j) => ({ order: j + 1, label })) } : undefined })) },
-      },
-      include: { questions: { include: { options: true }, orderBy: { order: 'asc' } } },
-    });
-  };
-
-  const surveys = [];
-  // 12 weekly tutor surveys over ~90 days
-  for (let w = 12; w >= 0; w--) {
-    const days = w * 7 + 2;
-    surveys.push(await makeSurvey({ title: `Haftalik Tutor So'rovnomasi — ${dayjs().subtract(days, 'day').format('DD.MM')}`, description: "Har hafta juma kuni to'ldiriladigan qisqa so'rovnoma. Javoblaringiz maktab ishini yaxshilashga yordam beradi.", qs: weeklyTutorQs, audience: 'TUTORS', sentDaysAgo: days, status: days <= 3 ? 'ACTIVE' : 'COMPLETED', deadlineDays: 3 }));
-  }
-  // 6 bi-weekly teacher lesson surveys
-  for (let w = 6; w >= 1; w--) {
-    const days = w * 14 - 3;
-    surveys.push(await makeSurvey({ title: `O'qituvchi dars hisoboti — ${dayjs().subtract(days, 'day').format('DD.MM')}`, description: "Ikki haftalik dars sifati va davomat bo'yicha so'rovnoma.", qs: teacherLessonQs, audience: 'TEACHERS', sentDaysAgo: days, status: days <= 4 ? 'ACTIVE' : 'COMPLETED', deadlineDays: 4, createdBy: hr.id }));
-  }
-  // monthly
-  for (let m = 3; m >= 1; m--) {
-    const days = m * 30 - 5;
-    surveys.push(await makeSurvey({ title: `Oylik natijalar so'rovnomasi — ${dayjs().subtract(days, 'day').format('MMMM YYYY')}`, description: 'Oylik yakunlar va rejalar.', qs: monthlyQs, audience: 'ALL', sentDaysAgo: days, status: 'COMPLETED', deadlineDays: 5, createdBy: ceo.id }));
-  }
-  // anonymous satisfaction (HR), active now
-  surveys.push(await makeSurvey({ title: "Xodimlar qoniqish so'rovnomasi (anonim)", description: "Javoblar anonim. Iltimos, ochiq va samimiy javob bering.", qs: satisfactionQs, audience: 'ALL', sentDaysAgo: 1, status: 'ACTIVE', deadlineDays: 6, anonymous: true, createdBy: hr.id }));
-  // branch-specific active
-  surveys.push(await makeSurvey({ title: 'Chilonzor: yangi jadval bo\'yicha fikr', description: 'Yangi dars jadvali haqida fikringiz.', qs: [{ type: 'RATING', text: 'Yangi jadval qulaymi?' }, { type: 'YES_NO', text: 'Shanba kunlari dars o\'tishga rozimisiz?' }, { type: 'LONG_TEXT', text: 'Izoh', isRequired: false }], audience: 'BRANCH', branchId: branches[0].id, sentDaysAgo: 0, status: 'ACTIVE', deadlineDays: 2 }));
-  // scheduled + drafts
-  surveys.push(await makeSurvey({ title: 'Chorak yakuni: o\'quvchilar natijalari', description: 'Chorak yakunidagi natijalar tahlili.', qs: monthlyQs, audience: 'ALL', sentDaysAgo: null, status: 'SCHEDULED', scheduledIn: 3 }));
-  surveys.push(await makeSurvey({ title: 'Yozgi lager tashkil etish bo\'yicha so\'rov', description: '', qs: [{ type: 'YES_NO', text: 'Yozgi lagerda ishtirok etasizmi?' }, { type: 'MULTIPLE_CHOICE', text: 'Qaysi yo\'nalishlar?', options: ['Sport', 'Ingliz tili', 'Robototexnika', 'San\'at'] }], audience: 'ALL', sentDaysAgo: null, status: 'DRAFT' }));
-  surveys.push(await makeSurvey({ title: 'Ota-onalar bilan uchrashuv tayyorgarligi', description: '', qs: [{ type: 'TEXT', text: 'Qaysi sanada qulay?' }], audience: 'TUTORS', sentDaysAgo: null, status: 'DRAFT' }));
-  surveys.push(await makeSurvey({ title: "2024 kuzgi qoniqish so'rovnomasi", description: 'Arxivlangan.', qs: satisfactionQs, audience: 'ALL', sentDaysAgo: 120, status: 'ARCHIVED', anonymous: true, createdBy: hr.id }));
-
-  // ── Assignments + responses ──
-  const POS = ["Darslar juda samarali o'tdi, o'quvchilar faol qatnashdi.", "Yaxshi hafta bo'ldi. Ikki guruhda test natijalari o'sdi.", "O'quvchilarning motivatsiyasi yuqori, uy vazifalari to'liq bajarilmoqda.", "Yangi metodika yaxshi natija berdi — speaking ko'nikmasi sezilarli o'sdi.", "Haftalik reja to'liq bajarildi."];
-  const PROB = ["Ikki o'quvchi ketma-ket darsga kelmadi, ota-onalar bilan bog'landim.", "Proyektor ishlamayapti, darsni doskada o'tishga to'g'ri keldi.", "Guruhda intizom muammosi bor — bir o'quvchi boshqalarga xalaqit beradi.", "Ba'zi o'quvchilar uy vazifasini bajarmayapti.", "Xonada issiqlik yetarli emas, o'quvchilar shikoyat qildi."];
-  const GROUPS_HELP = ['IELTS-11', 'MATE-22', 'INGL-13', 'RUS-21', 'FIZI-31', "Yo'q", 'Barcha guruhlar yaxshi'];
-  const SUGG = ["Qo'shimcha o'quv materiallari kerak.", 'Speaking club tashkil etsak yaxshi bo\'lardi.', "O'qituvchilar uchun metodik seminar o'tkazish taklifi.", 'Ota-onalar uchun oylik hisobot formati kerak.', "Hozircha yo'q, hammasi yaxshi."];
-  const RES = ["3 ta o'quvchi mock testda 6.5 oldi.", "Guruh o'rtacha bali 78 dan 84 ga ko'tarildi.", "Barcha o'quvchilar haftalik testdan o'tdi.", "2 ta o'quvchi olimpiadaga tayyorlandi.", 'Yangi 4 ta o\'quvchi guruhga moslashdi.'];
-
-  let responseCount = 0;
-  for (const s of surveys) {
-    if (!s.sentAt) continue;
-    let targets = active.filter((u) => u.role === 'TUTOR' || u.role === 'TEACHER');
-    if (s.audience === 'TUTORS') targets = targets.filter((u) => u.role === 'TUTOR');
-    if (s.audience === 'TEACHERS') targets = targets.filter((u) => u.role === 'TEACHER');
-    if (s.audience === 'BRANCH') targets = targets.filter((u) => u.branchId === s.branchId);
-    const ageDays = dayjs().diff(s.sentAt, 'day');
-    for (const u of targets) {
-      // completion probability grows with survey age; branch 0 slightly better, branch 2 slightly worse
-      const branchBias = u.branchId === branches[0].id ? 0.08 : u.branchId === branches[2].id ? -0.1 : 0;
-      const p = s.status === 'ACTIVE' ? Math.min(0.75, 0.15 + ageDays * 0.2) + branchBias : 0.82 + branchBias;
-      const completed = chance(p);
-      const inProgress = !completed && s.status === 'ACTIVE' && chance(0.3);
-      const completedAt = completed ? dayjs(s.sentAt).add(int(1, Math.max(2, Math.min(72, ageDays * 24 || 48))), 'hour').toDate() : null;
-      await prisma.surveyAssignment.create({ data: { surveyId: s.id, userId: u.id, status: completed ? 'COMPLETED' : inProgress ? 'IN_PROGRESS' : s.status === 'ACTIVE' ? 'PENDING' : 'EXPIRED', notifiedAt: s.sentAt, startedAt: completed || inProgress ? dayjs(completedAt ?? new Date()).subtract(int(3, 12), 'minute').toDate() : null, completedAt, createdAt: s.sentAt, remindedAt: chance(0.4) ? dayjs(s.sentAt).add(1, 'day').toDate() : null } });
-      if (!completed) continue;
-      const answers = [];
-      const ratings: number[] = [];
-      for (const q of s.questions) {
-        if (!q.isRequired && chance(0.35)) continue;
-        switch (q.type) {
-          case 'RATING': {
-            const base = u.branchId === branches[2].id ? 3.6 : 4.1;
-            const v = Math.max(1, Math.min(5, Math.round(base + (rnd() - 0.5) * 2.4)));
-            ratings.push(v);
-            answers.push({ questionId: q.id, numberValue: v });
-            break;
-          }
-          case 'NUMBER':
-            answers.push({ questionId: q.id, numberValue: int(4, 22) });
-            break;
-          case 'YES_NO':
-            answers.push({ questionId: q.id, boolValue: chance(0.7) });
-            break;
-          case 'SINGLE_CHOICE': {
-            const o = pick(q.options);
-            answers.push({ questionId: q.id, optionIds: [o.id], textValue: o.label });
-            break;
-          }
-          case 'MULTIPLE_CHOICE': {
-            const chosen = q.options.filter(() => chance(0.4));
-            const list = chosen.length ? chosen : [pick(q.options)];
-            answers.push({ questionId: q.id, optionIds: list.map((o) => o.id), textValue: list.map((o) => o.label).join(', ') });
-            break;
-          }
-          default: {
-            const t = q.text.toLowerCase();
-            const text = t.includes('muammo') ? pick(PROB) : t.includes('taklif') || t.includes("o'zgartir") ? pick(SUGG) : t.includes('guruh') ? pick(GROUPS_HELP) : t.includes('natija') || t.includes('reja') ? pick(RES) : pick(POS);
-            answers.push({ questionId: q.id, textValue: text });
-          }
+  let demoParentDone = false;
+  for (const b of branches) {
+    const levels = b.id === yun.id ? [5, 6, 7, 8, 9, 10] : [5, 6, 7];
+    const letters = b.id === yun.id ? ['A', 'B'] : ['A'];
+    let gi = 0;
+    for (const level of levels) for (const letter of letters) {
+      const tutor = tutors[b.id][gi % tutors[b.id].length];
+      const room = rooms[b.id][gi % 12];
+      const mainTeacher = teachers[b.id][gi % teachers[b.id].length];
+      const g = await prisma.group.create({ data: { name: `${level}-${letter}`, gradeLevel: level, academicYear: `${year}-${year + 1}`, room: room.name, branchId: b.id, tutorId: tutor.id, teacherId: mainTeacher.id, allowParentChat: true } });
+      // teachers per subject
+      const teacherIds: Record<string, string> = {};
+      const codesForLevel = SUBJECTS.filter((s) => !(level < 7 && ['PHYS', 'CHEM'].includes(s.code))).map((s) => s.code);
+      for (const code of codesForLevel) {
+        const t = teachers[b.id].find((x) => x.subjectCode === code) ?? pick(teachers[b.id]);
+        teacherIds[code] = t.id;
+        await prisma.groupTeacher.create({ data: { groupId: g.id, teacherId: t.id, subjectId: subj(code).id } });
+      }
+      // timetable: 6 days × 5-6 lessons
+      const perDay = level >= 9 ? 6 : 5;
+      for (const [di, wd] of WD.entries()) {
+        const n = wd === 'SAT' ? 4 : perDay;
+        for (let k = 0; k < n; k++) {
+          const code = codesForLevel[(di * perDay + k + gi) % codesForLevel.length];
+          const r = code === 'PE' ? rooms[b.id].find((x) => x.name === 'Sport zali')! : code === 'IT' ? rooms[b.id].find((x) => x.name === 'IT lab')! : room;
+          await prisma.lesson.create({ data: { scheduleId: schedule.id, groupId: g.id, subjectId: subj(code).id, teacherId: teacherIds[code], roomId: r.id, weekday: wd, startTime: SLOTS[k][0], endTime: SLOTS[k][1], order: k + 1 } });
         }
       }
-      const avgRating = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
-      await prisma.surveyResponse.create({ data: { surveyId: s.id, userId: s.isAnonymous ? null : u.id, branchIdSnap: u.branchId, roleKeySnap: u.role, source: 'telegram', startedAt: dayjs(completedAt!).subtract(int(3, 12), 'minute').toDate(), submittedAt: completedAt!, durationSec: int(120, 720), avgRating, answers: { create: answers } } });
-      responseCount++;
+      // students
+      const n = int(14, 20);
+      const fee = level >= 9 ? 3_500_000 : 3_000_000;
+      for (let i = 0; i < n; i++) {
+        const gender = chance(0.5) ? 'MALE' : 'FEMALE';
+        const last = pick(LAST_M);
+        const first = gender === 'MALE' ? pick(BOY) : pick(GIRL);
+        const isDemo = !demoParentDone && b.id === yun.id && level === 7 && letter === 'A' && i === 0;
+        const firstName = isDemo ? 'Ali' : first;
+        const lastName = isDemo ? 'Jumayev' : gender === 'MALE' ? last : fem(last);
+        const fullName = `${firstName} ${lastName}`;
+        const isBoarder = b.id === yun.id && level >= 8 && chance(0.3);
+        const discountPercent = chance(0.15) ? pick([10, 20, 50]) : 0;
+        const stUser = chance(0.5) || isDemo ? await prisma.user.create({ data: { fullName, roleId: studentRole, branchId: b.id, status: 'ACTIVE', telegramId: BigInt(tgN++), phone: nextPhone(), position: "O'quvchi" } }) : null;
+        const st = await prisma.student.create({
+          data: {
+            userId: stUser?.id ?? null, firstName, lastName, fullName, gender, birthDate: dayjs().subtract(level + 6, 'year').subtract(int(0, 300), 'day').toDate(),
+            studentCode: `TIS-${year}-${String(studentSeq++).padStart(4, '0')}`, branchId: b.id, groupId: g.id, status: 'ACTIVE', enrolledAt: daysAgo(int(20, 700)),
+            monthlyFee: fee, discountPercent, discountNote: discountPercent ? pick(["Ko'p farzandli oila", 'Xodim farzandi', "A'lochi o'quvchi chegirmasi"]) : null, isBoarder,
+          },
+        });
+        // parents: father (+ mother 60%)
+        const parentUserIds: string[] = [];
+        const father = isDemo ? 'Baxtbek Jumayev' : `${pick(BOY)} ${last}`;
+        const fUser = await prisma.user.create({ data: { fullName: father, roleId: parentRole, branchId: b.id, status: 'ACTIVE', phone: isDemo ? (process.env.SUPER_ADMIN_PHONE ? null : nextPhone()) : nextPhone(), telegramId: chance(0.85) || isDemo ? BigInt(tgN++) : null, position: 'Ota-ona' } });
+        const fParent = await prisma.parent.create({ data: { userId: fUser.id, relation: 'Ota', occupation: pick(['Tadbirkor', 'Shifokor', 'Muhandis', 'Haydovchi', "O'qituvchi", 'Dasturchi']) } });
+        await prisma.studentParent.create({ data: { studentId: st.id, parentId: fParent.id, relation: 'Ota', isPrimary: true } });
+        parentUserIds.push(fUser.id);
+        if (chance(0.6)) {
+          const mUser = await prisma.user.create({ data: { fullName: `${pick(GIRL)} ${fem(last)}`, roleId: parentRole, branchId: b.id, status: 'ACTIVE', phone: nextPhone(), telegramId: chance(0.7) ? BigInt(tgN++) : null, position: 'Ota-ona' } });
+          const mParent = await prisma.parent.create({ data: { userId: mUser.id, relation: 'Ona' } });
+          await prisma.studentParent.create({ data: { studentId: st.id, parentId: mParent.id, relation: 'Ona' } });
+          parentUserIds.push(mUser.id);
+        }
+        if (isDemo) demoParentDone = true;
+        allStudents.push({ id: st.id, groupId: g.id, branchId: b.id, fullName, userId: stUser?.id ?? null, parentUserIds, isBoarder, monthlyFee: fee, discountPercent });
+      }
+      await prisma.group.update({ where: { id: g.id }, data: { studentCount: n } });
+      allGroups.push({ id: g.id, name: g.name, branchId: b.id, tutorId: tutor.id, gradeLevel: level, teacherIds });
+      gi++;
     }
+    await prisma.branch.update({ where: { id: b.id }, data: { studentCount: allStudents.filter((s) => s.branchId === b.id).length } });
   }
-  console.log(`✔ ${surveys.length} surveys, ${responseCount} responses`);
+  console.log(`✔ ${allGroups.length} groups, ${allStudents.length} students`);
 
-  // ── Reports ──
-  const REPORT_TITLES: Record<ReportType, string[]> = {
-    DAILY: ['Kunlik hisobot', 'Bugungi darslar', 'Kunlik faoliyat'],
-    WEEKLY: ['Haftalik hisobot', 'Hafta yakuni'],
-    MONTHLY: ['Oylik hisobot', 'Oy yakuni'],
-    PROBLEM: ["Proyektor nosozligi", "O'quvchi davomati muammosi", 'Xonada issiqlik muammosi', 'Darslik yetishmovchiligi'],
-    STUDENT_FEEDBACK: ["O'quvchilar fikri — IELTS guruhi", "Ota-ona murojaati", "O'quvchi taklifi"],
-    LESSON: ['Dars hisoboti: Present Perfect', 'Dars hisoboti: Kvadrat tenglamalar', "Dars hisoboti: Nutq o'stirish", 'Dars hisoboti: Listening practice'],
-  };
-  const REPORT_BODY = ["Bugun 4 ta dars o'tdim. Davomat 92%. Uy vazifasi 85% bajarildi. IELTS-11 guruhida writing bo'yicha qo'shimcha mashq berildi.", "Hafta davomida 18 ta dars, 2 ta nazorat ishi. O'rtacha ball 81. Ikki o'quvchi bilan individual suhbat o'tkazildi.", "Guruhda 14 o'quvchi, 13 tasi qatnashdi. Mavzu to'liq o'zlashtirildi, keyingi darsga test rejalashtirilgan.", "Ota-onalar bilan 5 ta suhbat, 3 ta o'quvchi bo'yicha reja tuzildi. Guruh natijalari barqaror.", "Speaking club o'tkazildi, 22 o'quvchi ishtirok etdi. Faollik yuqori bo'ldi."];
-  const groups = await prisma.group.findMany({ select: { id: true, tutorId: true, teacherId: true } });
-  let reportCount = 0;
-  for (const u of active) {
-    const myGroups = groups.filter((g) => g.tutorId === u.id || g.teacherId === u.id);
-    const n = int(8, 22);
-    for (let i = 0; i < n; i++) {
-      const type: ReportType = u.role === 'TEACHER' ? pick(['DAILY', 'LESSON', 'LESSON', 'WEEKLY', 'STUDENT_FEEDBACK', 'PROBLEM']) : pick(['DAILY', 'DAILY', 'WEEKLY', 'PROBLEM', 'STUDENT_FEEDBACK', 'MONTHLY']);
-      const d = int(0, 85);
-      const created = daysAgo(d, int(15, 21));
-      const status: ReportStatus = d < 2 ? (chance(0.6) ? 'PENDING' : 'APPROVED') : pick(['APPROVED', 'APPROVED', 'APPROVED', 'APPROVED', 'NEEDS_REVISION', 'REJECTED', 'PENDING']);
-      const reviewer = status === 'PENDING' ? null : pick([directors.find((x) => x.branchId === u.branchId)!, hr]);
-      await prisma.report.create({ data: { type, title: `${pick(REPORT_TITLES[type])} — ${dayjs(created).format('DD.MM')}`, content: pick(REPORT_BODY), status, authorId: u.id, groupId: myGroups.length && chance(0.7) ? pick(myGroups).id : null, periodStart: dayjs(created).startOf(type === 'WEEKLY' ? 'week' : type === 'MONTHLY' ? 'month' : 'day').toDate(), periodEnd: dayjs(created).endOf(type === 'WEEKLY' ? 'week' : type === 'MONTHLY' ? 'month' : 'day').toDate(), reviewerId: reviewer?.id ?? null, reviewedAt: reviewer ? dayjs(created).add(int(2, 30), 'hour').toDate() : null, reviewNote: status === 'NEEDS_REVISION' ? "Iltimos, davomat raqamlarini aniqlashtiring." : status === 'REJECTED' ? "Hisobot juda qisqa, batafsil yozing." : null, createdAt: created, updatedAt: created } });
-      reportCount++;
+  // ── Attendance (last 30 days, school days) & grades ──
+  const lessonsByGroup = new Map<string, Array<{ id: string; weekday: Weekday; subjectId: string; teacherId: string | null }>>();
+  for (const l of await prisma.lesson.findMany({ select: { id: true, weekday: true, subjectId: true, teacherId: true, groupId: true } })) {
+    if (!lessonsByGroup.has(l.groupId)) lessonsByGroup.set(l.groupId, []);
+    lessonsByGroup.get(l.groupId)!.push(l);
+  }
+  const attRows: Array<{ studentId: string; groupId: string; date: Date; status: AttendanceStatus; lateMinutes: number | null; markedById: string }> = [];
+  const gradeRows: Array<{ studentId: string; groupId: string; subjectId: string; teacherId: string | null; date: Date; value: number; maxValue: number; kind: 'LESSON' | 'HOMEWORK' | 'QUIZ' }> = [];
+  for (let d = 30; d >= 0; d--) {
+    const day = dayjs().subtract(d, 'day');
+    const dow = day.day();
+    if (dow === 0) continue;
+    const wd = WD[dow - 1];
+    const date = day.startOf('day').toDate();
+    for (const g of allGroups) {
+      const todays = (lessonsByGroup.get(g.id) ?? []).filter((l) => l.weekday === wd);
+      const students = allStudents.filter((s) => s.groupId === g.id);
+      for (const s of students) {
+        const r = rnd();
+        const status: AttendanceStatus = r < 0.9 ? 'PRESENT' : r < 0.95 ? 'LATE' : r < 0.98 ? 'ABSENT' : 'EXCUSED';
+        attRows.push({ studentId: s.id, groupId: g.id, date, status, lateMinutes: status === 'LATE' ? int(3, 20) : null, markedById: g.tutorId });
+        // ~1 grade per 2 lessons
+        for (const l of todays) if (chance(0.45) && status !== 'ABSENT') gradeRows.push({ studentId: s.id, groupId: g.id, subjectId: l.subjectId, teacherId: l.teacherId, date, value: pick([3, 4, 4, 4, 5, 5, 5, 2, 3]), maxValue: 5, kind: chance(0.15) ? 'QUIZ' : chance(0.2) ? 'HOMEWORK' : 'LESSON' });
+      }
     }
   }
-  console.log(`✔ ${reportCount} reports`);
+  for (let i = 0; i < attRows.length; i += 2000) await prisma.attendance.createMany({ data: attRows.slice(i, i + 2000), skipDuplicates: true });
+  for (let i = 0; i < gradeRows.length; i += 2000) await prisma.grade.createMany({ data: gradeRows.slice(i, i + 2000) });
+  console.log(`✔ ${attRows.length} attendance rows, ${gradeRows.length} grades`);
+
+  // ── Homework ──
+  const HW = [
+    ['Kasrlar ustida amallar', '45–52-mashqlar, 118-bet'], ['Present Perfect Tense', 'Workbook p. 34–36, write 10 sentences'], ['Nutq uslublari', "Insho: 'Mening maktabim' (1 sahifa)"],
+    ['Nyuton qonunlari', '3-§ savollarga javob, 2 ta masala'], ['Kimyoviy reaksiyalar', 'Laboratoriya hisobotini tayyorlash'], ['Hujayra tuzilishi', 'Rasm chizish va izohlash'],
+    ['Amir Temur davri', 'Xronologik jadval tuzish'], ['Python: sikllar', '5 ta dastur yozish (for/while)'], ['Iqlim mintaqalari', 'Xarita bilan ishlash'],
+  ];
+  let hwCount = 0;
+  for (const g of allGroups) {
+    const codes = Object.keys(g.teacherIds);
+    for (let k = 0; k < 5; k++) {
+      const code = codes[(k * 3 + g.gradeLevel) % codes.length];
+      const [title, task] = HW[(k + g.gradeLevel) % HW.length];
+      const created = daysAgo(k === 0 ? 0 : int(2, 25), 14);
+      const deadline = dayjs(created).add(k === 0 ? 2 : int(2, 5), 'day').hour(18).minute(0).toDate();
+      const h = await prisma.homework.create({ data: { groupId: g.id, subjectId: subj(code).id, authorId: g.teacherIds[code], title, task, deadline, createdAt: created, note: chance(0.3) ? 'Daftarda bajaring va rasmga olib yuboring.' : null } });
+      const students = allStudents.filter((s) => s.groupId === g.id);
+      const past = dayjs(deadline).isBefore(dayjs());
+      await prisma.homeworkSubmission.createMany({
+        data: students.map((s) => {
+          const r = rnd();
+          const status = !past ? (r < 0.35 ? 'SUBMITTED' : 'NOT_SUBMITTED') : r < 0.55 ? 'ACCEPTED' : r < 0.7 ? 'GRADED' : r < 0.8 ? 'REVISION' : r < 0.9 ? 'SUBMITTED' : 'NOT_SUBMITTED';
+          const submitted = status !== 'NOT_SUBMITTED';
+          return { homeworkId: h.id, studentId: s.id, status, content: submitted ? 'Bajarildi. Javoblar daftarda.' : null, submittedAt: submitted ? dayjs(created).add(int(4, 48), 'hour').toDate() : null, reviewedAt: ['ACCEPTED', 'GRADED', 'REVISION'].includes(status) ? dayjs(created).add(int(50, 80), 'hour').toDate() : null, reviewerId: ['ACCEPTED', 'GRADED', 'REVISION'].includes(status) ? g.teacherIds[code] : null, score: status === 'GRADED' ? pick([3, 4, 5]) : null, feedback: status === 'REVISION' ? "2 va 3-mashqlarni qayta bajaring." : null, attempts: submitted ? 1 : 0 };
+        }),
+      });
+      hwCount++;
+    }
+  }
+  console.log(`✔ ${hwCount} homework`);
+
+  // ── Exams ──
+  let examCount = 0;
+  for (const g of allGroups) {
+    const codes = Object.keys(g.teacherIds);
+    for (const [k, code] of codes.slice(0, 3).entries()) {
+      const done = k < 2;
+      const date = done ? daysAgo(int(5, 25), 9) : dayjs().add(int(2, 10), 'day').hour(9).toDate();
+      const ex = await prisma.exam.create({ data: { title: `${subj(code).name} — ${done ? 'nazorat ishi' : 'chorak imtihoni'}`, groupId: g.id, subjectId: subj(code).id, authorId: g.teacherIds[code], date, maxScore: 100, status: done ? 'DONE' : 'PLANNED' } });
+      if (done) {
+        const students = allStudents.filter((s) => s.groupId === g.id);
+        await prisma.examResult.createMany({ data: students.map((s) => { const score = int(45, 100); return { examId: ex.id, studentId: s.id, score, grade: score >= 86 ? 5 : score >= 71 ? 4 : score >= 56 ? 3 : 2 }; }) });
+      }
+      examCount++;
+    }
+  }
+  console.log(`✔ ${examCount} exams`);
+
+  // ── Finance: invoices for last 3 months + this month, payments, expenses ──
+  let invSeq: Record<string, number> = {};
+  const nextInv = (period: string) => { invSeq[period] = (invSeq[period] ?? 0) + 1; return `INV-${period}-${String(invSeq[period]).padStart(4, '0')}`; };
+  let invCount = 0, payCount = 0;
+  for (let m = 3; m >= 0; m--) {
+    const p = dayjs().subtract(m, 'month');
+    const period = p.format('YYYY-MM');
+    const dueDate = p.date(10).endOf('day').toDate();
+    for (const s of allStudents) {
+      const amount = s.monthlyFee;
+      const discount = Math.round((amount * s.discountPercent) / 100);
+      const total = amount - discount;
+      const r = rnd();
+      const paidFraction = m === 0 ? (r < 0.55 ? 1 : r < 0.7 ? 0.5 : 0) : r < 0.85 ? 1 : r < 0.93 ? 0.5 : 0;
+      const paid = Math.round(total * paidFraction);
+      const status = paid >= total ? 'PAID' : paid > 0 ? (dayjs().isAfter(dueDate) ? 'OVERDUE' : 'PARTIAL') : dayjs().isAfter(dueDate) ? 'OVERDUE' : 'PENDING';
+      const inv = await prisma.invoice.create({ data: { number: nextInv(period), studentId: s.id, branchId: s.branchId, period, title: `${p.format('MMMM YYYY')} oyi to'lovi`, amount, discount, total, paid, dueDate, status, createdAt: p.startOf('month').toDate() } });
+      invCount++;
+      if (paid > 0) {
+        const parts = paidFraction === 0.5 ? 1 : chance(0.2) ? 2 : 1;
+        for (let i = 0; i < parts; i++) {
+          await prisma.payment.create({ data: { invoiceId: inv.id, studentId: s.id, amount: Math.round(paid / parts), method: pick(['CASH', 'CARD', 'PAYME', 'CLICK', 'TRANSFER']), paidAt: p.date(int(1, 12)).hour(int(9, 18)).toDate(), recordedById: accountant.id, receiptNo: `R-${period}-${int(1000, 9999)}` } });
+          payCount++;
+        }
+      }
+    }
+  }
+  const EXP = [['Ish haqi', 'Xodimlar oyligi'], ['Ijara', 'Bino ijarasi'], ['Kommunal', 'Elektr va suv'], ['Ovqatlanish', 'Oshxona xarajatlari'], ['Ta\'mirlash', 'Xonalar ta\'miri'], ['Marketing', 'Reklama kampaniyasi'], ['Jihozlar', 'Proyektor va kompyuterlar']];
+  for (let m = 3; m >= 0; m--) for (const b of branches) for (const [category, title] of EXP) {
+    const base = category === 'Ish haqi' ? 180_000_000 : category === 'Ijara' ? 45_000_000 : int(3_000_000, 15_000_000);
+    await prisma.expense.create({ data: { branchId: b.id, category, title, amount: Math.round(base * (b.id === yun.id ? 1 : 0.6)), spentAt: dayjs().subtract(m, 'month').date(int(1, 25)).toDate(), recordedById: accountant.id } });
+  }
+  console.log(`✔ ${invCount} invoices, ${payCount} payments, expenses`);
+
+  // ── Dormitory (Yunusobod) ──
+  const dorm = await prisma.dormitory.create({ data: { name: 'TARGET yotoqxonasi', branchId: yun.id, managerId: komendant.id, address: "Yunusobod, Bog'ishamol ko'chasi 4" } });
+  const bedsFree: Array<{ id: string; roomId: string }> = [];
+  for (const bname of ['A bino', 'B bino']) {
+    const bld = await prisma.dormBuilding.create({ data: { dormitoryId: dorm.id, name: bname, floors: 3 } });
+    for (let f = 1; f <= 3; f++) for (let r = 1; r <= 4; r++) {
+      const room = await prisma.dormRoom.create({ data: { buildingId: bld.id, number: `${f}0${r}`, floor: f, capacity: 4, gender: bname === 'A bino' ? 'MALE' : 'FEMALE', condition: chance(0.9) ? 'GOOD' : 'NEEDS_REPAIR' } });
+      for (const label of ['1', '2', '3', '4']) bedsFree.push({ id: (await prisma.dormBed.create({ data: { roomId: room.id, label } })).id, roomId: room.id });
+    }
+  }
+  const boarders = allStudents.filter((s) => s.isBoarder);
+  for (const [i, s] of boarders.entries()) {
+    const bed = bedsFree[i];
+    if (!bed) break;
+    await prisma.dormAssignment.create({ data: { studentId: s.id, bedId: bed.id, checkInAt: daysAgo(int(10, 60)) } });
+    for (let d = 7; d >= 1; d--) {
+      const r = rnd();
+      const type = r < 0.85 ? 'CHECK_IN' : r < 0.95 ? 'LATE' : 'ABSENT';
+      await prisma.dormLog.create({ data: { studentId: s.id, roomId: bed.roomId, type, severity: type === 'ABSENT' ? 'WARNING' : 'INFO', title: `Kechki yo'qlama: ${type === 'CHECK_IN' ? 'joyida' : type === 'LATE' ? 'kechikdi' : 'kelmadi'}`, occurredAt: dayjs().subtract(d, 'day').hour(21).minute(int(0, 30)).toDate(), authorId: komendant.id, notified: type !== 'CHECK_IN' } });
+    }
+  }
+  if (boarders.length) await prisma.dormLog.create({ data: { studentId: boarders[0].id, roomId: bedsFree[0].roomId, type: 'ROOM_ISSUE', severity: 'WARNING', title: 'Xonada isitish tizimi ishlamayapti', body: "Radiator sovuq, ta'mirchi chaqirildi.", occurredAt: daysAgo(2, 19), authorId: komendant.id } });
+  console.log(`✔ Dormitory: ${boarders.length} boarders`);
+
+  // ── Group messages ──
+  const MSG = ["Assalomu alaykum, hurmatli ota-onalar! Ertaga soat 15:00 da ota-onalar yig'ilishi bo'ladi.", 'Bugungi uy vazifasi tizimga kiritildi, iltimos tekshiring.', "Kelasi hafta matematika fanidan nazorat ishi o'tkaziladi.", 'Eslatma: sport formasi juma kuni kerak bo\'ladi.', "Rahmat! O'quvchilar bugun juda faol qatnashdi 👏"];
+  for (const g of allGroups) {
+    for (let i = 0; i < int(2, 4); i++) await prisma.groupMessage.create({ data: { groupId: g.id, authorId: chance(0.6) ? g.tutorId : pick(Object.values(g.teacherIds)), body: pick(MSG), createdAt: daysAgo(int(0, 12), int(9, 19)) } });
+  }
 
   // ── Announcements ──
   const anns = [
-    { title: "Yangi o'quv choragi boshlanishi", body: "Hurmatli hamkasblar! 1-oktabrdan yangi o'quv choragi boshlanadi. Barcha tutorlar guruh ro'yxatlarini 28-sentabrgacha yangilashlari so'raladi.", priority: 'HIGH' as const, isPinned: true, d: 1 },
-    { title: 'Metodik seminar', body: "Juma kuni soat 15:00 da Chilonzor filialida \"Interfaol darslar\" mavzusida seminar bo'lib o'tadi. Ishtirok ixtiyoriy, lekin tavsiya etiladi.", priority: 'NORMAL' as const, isPinned: false, d: 3 },
-    { title: "Haftalik so'rovnoma eslatmasi", body: "Har juma kuni haftalik so'rovnomani soat 21:00 gacha to'ldirishni unutmang. Bu KPI hisobiga ta'sir qiladi.", priority: 'NORMAL' as const, isPinned: false, d: 6 },
-    { title: 'Diqqat: tizimda texnik ishlar', body: "Yakshanba kuni 02:00–04:00 oralig'ida tizimda texnik ishlar olib boriladi. Bot vaqtincha ishlamasligi mumkin.", priority: 'URGENT' as const, isPinned: false, d: 10 },
-    { title: "O'qituvchilar kuni bilan!", body: "Barcha o'qituvchi va tutorlarimizni kasb bayrami bilan tabriklaymiz! Sizning mehnatingiz — bizning kelajagimiz. 🎉", priority: 'LOW' as const, isPinned: false, d: 18 },
-    { title: 'Yangi hisobot formati', body: "Kunlik hisobotlarda endi guruh nomini ko'rsatish majburiy. Bot orqali hisobot topshirishda guruhni tanlang.", priority: 'HIGH' as const, isPinned: false, d: 25 },
+    { title: "Yangi o'quv choragi boshlanishi", body: "Hurmatli ota-onalar va o'quvchilar! 1-oktabrdan yangi chorak boshlanadi. Dars jadvali botda va platformada yangilandi.", priority: 'HIGH' as const, isPinned: true, d: 1 },
+    { title: "Ota-onalar yig'ilishi", body: "Juma kuni soat 15:00 da barcha sinflarda ota-onalar yig'ilishi bo'lib o'tadi.", priority: 'NORMAL' as const, isPinned: false, d: 3 },
+    { title: "To'lov eslatmasi", body: "Oylik to'lovlarni har oyning 10-sanasigacha amalga oshirishingizni so'raymiz. To'lov holatini botdagi 💳 To'lovlar bo'limida ko'rishingiz mumkin.", priority: 'NORMAL' as const, isPinned: false, d: 6 },
+    { title: 'Sport musobaqasi', body: "Shanba kuni maktabimizda sinflararo futbol musobaqasi o'tkaziladi. Barchani tomosha qilishga taklif etamiz!", priority: 'LOW' as const, isPinned: false, d: 9 },
   ];
-  for (const a of anns) {
-    const ann = await prisma.announcement.create({ data: { title: a.title, body: a.body, priority: a.priority, isPinned: a.isPinned, audience: 'ALL', authorId: pick([hr, directors[0], superAdmin]).id, publishAt: daysAgo(a.d, 9), createdAt: daysAgo(a.d, 9), sentCount: active.length } });
-    const readers = active.filter(() => chance(0.65));
-    if (readers.length) await prisma.announcementRead.createMany({ data: readers.map((r) => ({ announcementId: ann.id, userId: r.id, readAt: daysAgo(Math.max(0, a.d - int(0, 2)), int(9, 22)) })) });
-  }
-  console.log(`✔ ${anns.length} announcements`);
+  for (const a of anns) await prisma.announcement.create({ data: { title: a.title, body: a.body, priority: a.priority, isPinned: a.isPinned, audience: 'ALL', authorId: pick([hr.id, dirYun.id, administrator.id]), publishAt: daysAgo(a.d, 9), createdAt: daysAgo(a.d, 9), sentCount: allStudents.length } });
 
-  // ── Tasks ──
-  const TASKS = ["Guruh ro'yxatini yangilash", 'Ota-onalar yig\'ilishini o\'tkazish', 'Mock test natijalarini kiritish', "O'quvchilar davomatini tekshirish", 'Yangi darslik bo\'yicha reja tuzish', 'Speaking club tashkil etish', 'Sinf xonasini inventarizatsiya qilish'];
-  for (const u of active) {
-    for (let i = 0; i < int(1, 4); i++) {
-      const d = int(-10, 20);
-      const status = d < 0 ? (chance(0.75) ? 'DONE' : 'OPEN') : chance(0.3) ? 'DONE' : chance(0.3) ? 'IN_PROGRESS' : 'OPEN';
-      await prisma.task.create({ data: { title: pick(TASKS), description: chance(0.5) ? 'Batafsil ma\'lumot direktor bilan kelishiladi.' : null, status, dueAt: dayjs().add(d, 'day').hour(18).toDate(), assigneeId: u.id, createdById: pick([directors.find((x) => x.branchId === u.branchId)!, hr]).id, completedAt: status === 'DONE' ? dayjs().add(Math.min(d, 0) - 1, 'day').toDate() : null, createdAt: daysAgo(int(5, 30)) } });
-    }
+  // ── Notifications history (so the panel has content) ──
+  const sample = allStudents.slice(0, 40);
+  for (const s of sample) for (const uid of s.parentUserIds.slice(0, 1)) {
+    await prisma.notification.create({ data: { userId: uid, type: 'GRADE', channel: 'BOTH', title: '📊 Yangi baho — Matematika', body: `${s.fullName}\nBaho: 5 ⭐⭐⭐⭐⭐`, status: 'SENT', sentAt: daysAgo(int(0, 5), int(9, 16)) } });
   }
 
-  // ── Notifications (history) ──
-  const sentSurveys = surveys.filter((s) => s.sentAt).slice(-6);
-  for (const s of sentSurveys) {
-    const assigns = await prisma.surveyAssignment.findMany({ where: { surveyId: s.id }, select: { userId: true } });
-    await prisma.notification.createMany({ data: assigns.map((a) => ({ userId: a.userId, type: 'SURVEY_ASSIGNED' as const, channel: 'BOTH' as const, title: "📋 Yangi so'rovnoma!", body: `Sizga yangi so'rovnoma yuborildi:\n${s.title}`, surveyId: s.id, status: 'SENT' as const, sentAt: s.sentAt, createdAt: s.sentAt! })) });
-  }
-
-  // ── Audit logs ──
-  const actions = ['auth.login', 'survey.create', 'survey.send', 'user.update', 'report.review', 'announcement.create', 'settings.update', 'survey.export'];
-  for (let i = 0; i < 80; i++) {
-    const actor = pick([superAdmin, ceo, hr, ...directors]);
-    await prisma.auditLog.create({ data: { userId: actor.id, action: pick(actions), entity: 'Survey', ip: `192.168.1.${int(2, 250)}`, userAgent: 'Mozilla/5.0 (Macintosh) Chrome/128', source: 'web', createdAt: daysAgo(int(0, 40), int(8, 20)) } });
-  }
-
-  // ── Settings ──
-  await prisma.setting.upsert({ where: { key: 'org.name' }, create: { key: 'org.name', value: 'Bright Future Private School' }, update: {} });
-
-  // ── KPI: compute for last 8 weeks + last 3 months ──
-  for (let w = 8; w >= 0; w--) await computeKpi('WEEKLY', dayjs().subtract(w, 'week').toDate());
-  for (let m = 3; m >= 0; m--) await computeKpi('MONTHLY', dayjs().subtract(m, 'month').toDate());
-  console.log('✔ KPI computed');
+  console.log(`\n🎉 Demo ready. Demo staff accounts (password: ${demoPw}):`);
+  for (const e of ['ceo@target-school.uz', 'director@target-school.uz', 'hr@target-school.uz', 'accountant@target-school.uz', 'admin.yun@target-school.uz', 'dorm@target-school.uz', 'teacher@target-school.uz', 'tutor@target-school.uz']) console.log(`   ${e}`);
 }
 
 async function main() {
   await ensureCore();
-  const users = await prisma.user.count();
-  if (users > 0 && process.env.SEED_FORCE !== 'true') {
-    console.log(`ℹ Database already has ${users} users — skipping demo data (set SEED_FORCE=true to re-seed).`);
+  const superEmail = process.env.SUPER_ADMIN_EMAIL ?? 'admin@target-school.uz';
+  const yun = await prisma.branch.findFirst({ where: { code: 'YUN' } });
+  const sa = await ensureSuperAdmin(yun?.id ?? null);
+  if ((process.env.SEED_DEMO ?? 'true') !== 'true') return;
+  const students = await prisma.student.count();
+  if (students > 0 && process.env.SEED_FORCE !== 'true') {
+    console.log(`ℹ Database already has ${students} students — skipping demo data (set SEED_FORCE=true to re-seed).`);
     return;
   }
-  if (users > 0) await wipeDemo();
-  await seedDemo();
-  console.log('\n🎉 Seed complete. Demo accounts (password in brackets):');
-  console.log('   Super Admin  admin@tutorsurvey.uz     [Admin123!]');
-  console.log('   Director     director@tutorsurvey.uz  [Director123!]');
-  console.log('   CEO          ceo@tutorsurvey.uz       [Ceo123!]');
-  console.log('   HR Admin     hr@tutorsurvey.uz        [Hr123!]');
-  console.log('   Tutor        tutor@tutorsurvey.uz     [Tutor123!]   (Telegram-only role — links via bot)');
-  console.log('   Teacher      teacher@tutorsurvey.uz   [Teacher123!] (Telegram-only role — links via bot)');
+  if (students > 0 || (await prisma.user.count()) > 1) await wipeDemo(superEmail);
+  await seedDemo(sa.id);
+  const sa2 = await prisma.user.findUnique({ where: { email: superEmail } });
+  if (sa2 && !sa2.branchId) { const y = await prisma.branch.findFirst({ where: { code: 'YUN' } }); if (y) await prisma.user.update({ where: { id: sa2.id }, data: { branchId: y.id } }); }
+  console.log(`\n   Super Admin: ${superEmail}  (password: SUPER_ADMIN_PASSWORD from .env)`);
 }
 
 main()

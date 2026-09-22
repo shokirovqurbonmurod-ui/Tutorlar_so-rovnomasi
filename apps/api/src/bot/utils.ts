@@ -11,4 +11,4 @@ export async function safeAnswerCb(ctx: BotContext, text?: string) {
   }
 }
 
-export const cbData = (ctx: BotContext) => (ctx.callbackQuery && 'data' in ctx.callbackQuery ? ctx.callbackQuery.data : '');
+export const cbData = (ctx: BotContext) => (ctx.callbackQuery && 'data' in ctx.callbackQuery && typeof ctx.callbackQuery.data === 'string' ? ctx.callbackQuery.data : '');
