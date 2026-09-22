@@ -1,16 +1,16 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, ClipboardList, FileText, BarChart3, Users } from 'lucide-react';
+import { LayoutDashboard, GraduationCap, UserCheck, Wallet, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 
 const ITEMS = [
   { href: '/dashboard', label: 'Bosh', icon: LayoutDashboard, perm: 'dashboard.view' },
-  { href: '/surveys', label: "So'rov", icon: ClipboardList, perm: 'surveys.view' },
-  { href: '/reports', label: 'Hisobot', icon: FileText, perm: 'reports.view' },
-  { href: '/analytics', label: 'Tahlil', icon: BarChart3, perm: 'analytics.view' },
-  { href: '/users', label: 'Xodim', icon: Users, perm: 'users.view' },
+  { href: '/students', label: "O'quvchi", icon: GraduationCap, perm: 'students.view' },
+  { href: '/attendance', label: 'Davomat', icon: UserCheck, perm: 'attendance.view' },
+  { href: '/grades', label: 'Baholar', icon: Star, perm: 'grades.view' },
+  { href: '/finance', label: 'Moliya', icon: Wallet, perm: 'finance.view' },
 ];
 
 export function MobileNav() {

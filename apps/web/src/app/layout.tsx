@@ -3,9 +3,9 @@ import './globals.css';
 import { Providers } from './providers';
 
 export const metadata: Metadata = {
-  title: { default: 'TutorSurvey — Boshqaruv paneli', template: '%s · TutorSurvey' },
-  description: "Xususiy maktab uchun tutorlar va o'qituvchilardan so'rovnoma va hisobotlar yig'ish tizimi",
-  applicationName: 'TutorSurvey',
+  title: { default: 'TARGET INTERNATIONAL SCHOOL — Boshqaruv paneli', template: '%s · TARGET' },
+  description: "TARGET INTERNATIONAL SCHOOL — o'quvchilar, ota-onalar, o'qituvchilar va moliya uchun yagona boshqaruv platformasi",
+  applicationName: 'TARGET INTERNATIONAL SCHOOL',
   icons: { icon: '/icon.svg' },
 };
 

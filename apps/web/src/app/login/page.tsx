@@ -10,11 +10,14 @@ import { useAuth } from '@/lib/auth';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { Logo } from '@/components/layout/logo';
 
+// Demo staff logins (created by the seed when SEED_DEMO=true). The Super Admin
+// password is NOT listed here — it lives only in the server .env.
+const DEMO_PW = process.env.NEXT_PUBLIC_DEMO_PASSWORD ?? 'Target2026!';
 const DEMO = [
-  { label: 'Super Admin', email: 'admin@tutorsurvey.uz', password: 'Admin123!' },
-  { label: 'Direktor', email: 'director@tutorsurvey.uz', password: 'Director123!' },
-  { label: 'CEO', email: 'ceo@tutorsurvey.uz', password: 'Ceo123!' },
-  { label: 'HR / Admin', email: 'hr@tutorsurvey.uz', password: 'Hr123!' },
+  { label: 'Direktor', email: 'director@target-school.uz', password: DEMO_PW },
+  { label: 'CEO', email: 'ceo@target-school.uz', password: DEMO_PW },
+  { label: 'Buxgalter', email: 'accountant@target-school.uz', password: DEMO_PW },
+  { label: 'Komendant', email: 'dorm@target-school.uz', password: DEMO_PW },
 ];
 
 function LoginForm() {
@@ -101,15 +104,15 @@ export default function LoginPage() {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgb(255_255_255/0.08)_1px,transparent_0)] bg-[size:28px_28px]" />
         </div>
         <div className="relative">
-          <Logo light />
+          <Logo light size="lg" />
         </div>
         <div className="relative max-w-lg space-y-8">
-          <h1 className="text-4xl leading-tight font-semibold tracking-tight text-balance">Tutorlar va o‘qituvchilar fikrini bir joyda yig‘ing va tahlil qiling</h1>
-          <p className="text-white/70">Telegram bot orqali so‘rovnoma va hisobotlar, veb-panelda real vaqt analitika, KPI va filiallar bo‘yicha taqqoslash.</p>
+          <h1 className="text-4xl leading-tight font-semibold tracking-tight text-balance">Maktabning butun hayoti — bitta zamonaviy platformada</h1>
+          <p className="text-white/70">O‘quvchilar, ota-onalar, o‘qituvchilar, dars jadvali, baholar, davomat, moliya va yotoqxona. Telegram bot va veb-panel yagona bazada — o‘zgarish shu zahoti hammaga yetib boradi.</p>
           <ul className="grid gap-4 text-sm">
             {[
-              { icon: MessageSquareText, t: 'Telegram orqali 1 daqiqada so‘rovnoma' },
-              { icon: BarChart3, t: 'Filial va xodim kesimida KPI tahlili' },
+              { icon: MessageSquareText, t: 'Ota-onalarga Telegram orqali avtomatik xabarlar' },
+              { icon: BarChart3, t: 'Direktor va CEO uchun jonli dashboardlar' },
               { icon: ShieldCheck, t: 'Rollar asosida xavfsiz kirish va audit' },
             ].map(({ icon: Icon, t }) => (
               <li key={t} className="flex items-center gap-3">
@@ -121,7 +124,7 @@ export default function LoginPage() {
             ))}
           </ul>
         </div>
-        <p className="relative text-xs text-white/50">© {new Date().getFullYear()} TutorSurvey · Xususiy maktab boshqaruv tizimi</p>
+        <p className="relative text-xs text-white/50">© {new Date().getFullYear()} TARGET INTERNATIONAL SCHOOL · Maktab boshqaruv platformasi</p>
       </aside>
 
       <main className="relative flex flex-col items-center justify-center px-6 py-10">
@@ -137,7 +140,7 @@ export default function LoginPage() {
               <Sparkles className="size-3.5" /> Boshqaruv paneli
             </div>
             <h2 className="text-2xl font-semibold tracking-tight">Tizimga kirish</h2>
-            <p className="text-muted-foreground text-sm">Faqat boshqaruv xodimlari (Admin, Direktor, CEO, HR) uchun. Tutor va o‘qituvchilar Telegram botdan foydalanadi.</p>
+            <p className="text-muted-foreground text-sm">Xodimlar uchun veb-panel. Ota-onalar va o‘quvchilar Telegram bot (@targetgoboss_bot) orqali foydalanadi.</p>
           </div>
           <React.Suspense fallback={null}>
             <LoginForm />

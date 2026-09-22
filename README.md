@@ -1,47 +1,59 @@
-# TutorSurvey Bot
+# TARGET INTERNATIONAL SCHOOL — maktab boshqaruv tizimi
 
-Xususiy maktablar va o'quv markazlari uchun **Telegram bot + veb admin panel**: tutorlar va o'qituvchilardan so'rovnomalar, hisobotlar va KPI ma'lumotlarini yig'ish, tahlil qilish va boshqarish tizimi.
+Xususiy xalqaro maktab uchun **Telegram bot (@targetgoboss_bot) + veb admin panel + bitta umumiy ma'lumotlar bazasi**.
+O'quvchilar, ota-onalar, o'qituvchilar, tutorlar, komendant, buxgalteriya, direktor va CEO — hammasi bitta tizimda.
+Admin panelda kiritilgan har qanday o'zgarish (baho, davomat, to'lov, dars jadvali, uy vazifasi, e'lon) **darhol botda** ko'rinadi va kerak bo'lsa ota-onaga Telegram orqali bildirishnoma boradi.
 
 | Qism | Texnologiya |
 |---|---|
 | Backend / API | Node.js 20, TypeScript, Express 5, Prisma 7, PostgreSQL 16, Zod, JWT, Pino |
-| Telegram bot | Telegraf 4 (polling yoki webhook) |
+| Telegram bot | Telegraf 4 (polling yoki webhook), bot va API bitta jarayonda |
 | Admin panel | Next.js 15 (App Router), React 19, Tailwind CSS 4, shadcn/ui, Recharts, TanStack Query |
-| Infratuzilma | Docker, Railway / Render (API), Vercel (web) |
+| Infratuzilma | Docker, Railway / Render (API + bot), Vercel (web) |
 
-Asosiy til — **O'zbek** (RU/EN keyinroq qo'shish uchun matnlar `apps/web/src/lib/labels.ts` va `apps/api/src/bot/flows/*.ts` ichida markazlashtirilgan).
+Asosiy til — **O'zbek** (matnlar `apps/web/src/lib/labels.ts` va `apps/api/src/bot/flows/*.ts` ichida markazlashtirilgan). Dizayn — Apple uslubidagi minimal, light/dark, telefon/planshet/kompyuter uchun moslashuvchan.
 
 ---
 
 ## 1. Imkoniyatlar
 
-### Telegram bot
-- `/start` — salomlashuv, telefon raqami orqali ro'yxatdan o'tish / mavjud profilga ulash, asosiy menyu:
-  `📋 So'rovnomalar · 📝 Hisobot topshirish · 📢 E'lonlar · 📊 Mening natijalarim · 👤 Profil · ❓ Yordam`
-- Buyruqlar: `/start /menu /surveys /reports /profile /help`; adminlar uchun `/admin /users /surveys /reports /analytics /pending`
-- So'rovnoma oqimi: matn, uzun matn, bitta / ko'p tanlov, reyting 1–5, ha/yo'q, raqam; progress ko'rsatkichi, orqaga qaytish, bekor qilish, anonim rejim
-- Hisobot topshirish: kunlik / haftalik / oylik / muammo / o'quvchi fikri / dars hisoboti; ko'rib chiqish holati bot orqali xabar qilinadi
-- Bildirishnomalar: yangi so'rovnoma, muddat eslatmasi, yakunlanganlik, e'lon, vazifa, hisobot muddati, admin xabari; yetkazilmagan xabarlar navbatga tushadi va qayta yuboriladi
-- Deep link: `https://t.me/<bot>?start=survey_<id>`
+### Telegram bot — @targetgoboss_bot
+Bot `/start` da TARGET logotipi bilan salomlashadi, telefon raqami orqali profilni tanib oladi va rolga qarab menyu beradi:
+
+| Rol | Menyu |
+|---|---|
+| 👨‍👩‍👧 Ota-ona | Farzandim · 📊 Baholar · 📅 Dars jadvali · 🟢 Davomat · 📝 Uy vazifalari · 💳 To'lovlar · 🏠 Yotoqxona · 💬 Xabarlar · 📢 E'lonlar · 👤 Profil |
+| 👨‍🎓 O'quvchi | Baholar · Dars jadvali · Davomat · Uy vazifalari (topshirish) · Imtihonlar · Xabarlar · E'lonlar |
+| 👩‍🏫 O'qituvchi | 📚 Guruhlar · 👨‍🎓 O'quvchilar · 🟢 Davomat · 📊 Baholar · 📝 Uy vazifasi · 💬 Xabarlar · 📅 Dars jadvali |
+| 🧑‍🏫 Tutor | 👥 Guruhlar · 👨‍🎓 O'quvchilar · 📊 Natijalar · 🟢 Davomat · 💬 Ota-onalar · 📝 Hisobot |
+| 🏠 Komendant | 🏠 Yotoqxona · 👨‍🎓 O'quvchilar · 🛏 Xonalar · 🟢 Davomat · ⚠️ Incidentlar · 💬 Ota-onalar |
+| 🏢 Rahbariyat / xodimlar | Boshqaruv ko'rsatkichlari, so'rovnomalar, hisobotlar, e'lonlar |
+
+Ota-ona bir nechta farzandini ko'radi (`Ali Jumayev — 7-A`), tanlagach: baholar (kun/hafta/oy, fan, o'qituvchi), davomat (Kelgan / Kelmagan / Kechikkan / Sababli), kunlik-haftalik dars jadvali (+ **PDF yuklab olish**), uy vazifalari va ularning holati, imtihon natijalari, o'qituvchilar va tutor, to'lovlar (Jami / To'langan / Qoldiq, chegirma, qarz), yotoqxona (bino/xona/joy, komendant, oxirgi yozuvlar), guruh chati va e'lonlar.
+
+**Avtomatik bildirishnomalar (Telegram):** kelmaganlik · yangi baho · uy vazifasi berildi · muddat yaqinlashdi · yangi e'lon · to'lov muddati · to'lov qabul qilindi · dars jadvali o'zgardi · o'qituvchi/tutor xabari · yotoqxona incidenti · imtihon eslatmasi.
 
 ### Admin panel (`/dashboard`)
-Dashboard · Foydalanuvchilar · Tutorlar · O'qituvchilar · So'rovnomalar (yaratish / tahrirlash / nusxalash / rejalashtirish / yuborish / natijalar / CSV-XLSX-PDF eksport) · Savollar banki · Analitika · Hisobotlar (ko'rib chiqish oqimi) · Filiallar (+ bo'limlar, guruhlar, filial analitikasi) · E'lonlar · Vazifalar · KPI (metrikalar, leaderboard, avtomatik hisoblash) · Bildirishnomalar · Audit jurnali · Sozlamalar · Profil.
-Mobil-first, light/dark rejim, rolga qarab menyu va amallar cheklanadi.
+Dashboard (Direktor/CEO ko'rinishlari) · O'quvchilar (profil, baholar, davomat kalendari, to'lovlar, yotoqxona, Excel eksport) · Ota-onalar · Teacherlar · Tutorlar · Xodimlar (rol, filial, bo'lim, login/parol, Telegram ID, foto) · Rollar va ruxsatlar (yangi rol yaratish, har bir rolga alohida huquqlar) · Guruhlar (tutor, fan o'qituvchilari, o'quvchilar, ota-onalar, chat) · Fanlar va xonalar · Dars jadvali (haftalik jadval, dars qo'shish/tahrirlash, PDF) · Davomat (guruh varaqasi, statistika) · Baholar (jurnal, kun/hafta/oy) · Uy vazifalari (berish, tekshirish: Qabul qilindi / Qayta ishlash kerak / Baholandi) · Imtihonlar (natijalar) · Finance (daromad/xarajat/foyda, hisob-fakturalar, to'lovlar, qarzdorlar, chegirmalar, xarajatlar, Excel eksport) · Yotoqxona (bino → qavat → xona → joy, joylashtirish, jurnal, incidentlar, kunlik yo'qlama) · Xabarlar (guruh chatlari) · E'lonlar · Hisobotlar · KPI · Filiallar · Sozlamalar.
 
 ### Rollar (RBAC)
-| Rol | Kalit | Qisqacha |
+| Rol | Kalit | Qamrov |
 |---|---|---|
-| Super Admin | `SUPER_ADMIN` | Barcha huquqlar |
-| Direktor | `DIRECTOR` | O'z filiali doirasida to'liq boshqaruv |
-| CEO | `CEO` | Barcha filiallar analitikasi, biznes ko'rsatkichlar, faqat ko'rish |
-| HR / Admin | `HR_ADMIN` | Foydalanuvchilar, so'rovnoma yuborish (faqat tutor/teacher), natijalar |
-| Tutor | `TUTOR` | Bot orqali so'rovnoma va hisobot topshiradi |
-| O'qituvchi | `TEACHER` | Bot orqali so'rovnoma va hisobot topshiradi |
+| Super Admin (Bosh Admin) | `SUPER_ADMIN` | Hamma narsa; har qanday rol/foydalanuvchi qo'sha oladi |
+| Direktor | `DIRECTOR` | O'z filiali to'liq |
+| CEO | `CEO` | Barcha filiallar: moliya, o'quvchilar, davomat, jamoa |
+| HR / Administrator / Reception | `HR_ADMIN` / `ADMINISTRATOR` / `RECEPTION` | Xodimlar / o'quvchilar va ota-onalarni ro'yxatga olish |
+| Buxgalter | `ACCOUNTANT` | Finance to'liq |
+| Komendant | `DORM_MANAGER` | Yotoqxona boshqaruvi |
+| Marketing, IT admin | `MARKETING` / `IT_ADMIN` | E'lonlar, analitika / tizim sozlamalari |
+| O'qituvchi, Tutor | `TEACHER` / `TUTOR` | Faqat o'z guruhlari |
+| Ota-ona, O'quvchi | `PARENT` / `STUDENT` | Faqat o'z farzandlari / o'zi |
+| Maxsus rollar | `CUSTOM` | Admin panelda yaratiladi, ruxsatlar alohida belgilanadi |
 
-Ruxsatlar `permissions` jadvalida (`surveys.create`, `reports.review`, `kpi.manage`, …) va `role_permissions` orqali biriktiriladi; API `requirePermission()` middleware bilan himoyalangan.
+Super Admin — **Jumayev Baxtbek** (Bosh Admin, Yunusobod filiali). Login/parol kodda yozilmaydi: `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` `.env` orqali beriladi va `db:seed` da yaratiladi/yangilanadi.
 
 ### Xavfsizlik
-JWT (access + refresh, httpOnly cookie yoki Bearer), bcrypt, Telegram ID tekshiruvi, rate limiting, Zod validatsiya, Helmet, CORS ro'yxati, audit log (kim, nima, qachon, IP), webhook secret token.
+JWT access (15 daq) + refresh (httpOnly cookie, rotatsiya), bcrypt, ruxsatlarga asoslangan RBAC (`permission` kalitlari), filial/guruh/farzand darajasida ma'lumot cheklovi, rate-limit, Helmet, audit jurnali, Telegram webhook secret, CORS ro'yxati (`CORS_ORIGINS`; `*.vercel.app` va lokal preview domenlari avtomatik ruxsat etiladi).
 
 ---
 
@@ -115,20 +127,15 @@ Yoki Docker bilan: `docker compose up --build` (`apps/api/.env` bo'lishi shart).
 
 Ochish: **http://localhost:3000** · API hujjatlari: **http://localhost:4000/api/docs** · Health: `GET /health`.
 
-### Demo hisoblar (seed)
+### Hisoblar (seed)
 | Rol | Login | Parol |
 |---|---|---|
-| Super Admin | `admin@tutorsurvey.uz` | `Admin123!` |
-| Direktor (Chilonzor) | `director@tutorsurvey.uz` | `Director123!` |
-| Direktor (Yunusobod / Samarqand) | `director.yun@…` / `director.sam@…` | `Director123!` |
-| CEO | `ceo@tutorsurvey.uz` | `Ceo123!` |
-| HR / Admin | `hr@tutorsurvey.uz` | `Hr123!` |
-| Tutor | `tutor@tutorsurvey.uz` | `Tutor123!` |
-| O'qituvchi | `teacher@tutorsurvey.uz` | `Teacher123!` |
+| Super Admin — Jumayev Baxtbek | `SUPER_ADMIN_EMAIL` (default `admin@target-school.uz`) | `SUPER_ADMIN_PASSWORD` (`.env`) |
+| CEO / Direktor / HR / Buxgalter / Komendant / Reception / Marketing / IT / O'qituvchi / Tutor | `ceo@`, `director@`, `director.chl@`, `hr@`, `accountant@`, `admin.yun@`, `dorm@`, `reception@`, `marketing@`, `it@`, `teacher@`, `tutor@` + `target-school.uz` | `SEED_DEMO_PASSWORD` (default `Target2026!`) |
 
-Tutor va o'qituvchilar odatda faqat bot orqali ishlaydi. Telegram akkauntini tizimga ulashning 3 xavfsiz yo'li: **(a)** admin panelda (`Foydalanuvchi → Telegram kodi`) olingan bir martalik kod → botda `/link 123456`; **(b)** `/start` → telefon raqamini ulashish → HR oldindan kiritgan raqam bo'yicha avtomatik ulanish; **(c)** o'zi ro'yxatdan o'tish → `Kutilmoqda` holati → HR/Admin tasdiqlaydi.
+Demo ma'lumot (`SEED_DEMO=true`): 2 filial (Yunusobod, Chilonzor), ~260 o'quvchi, ota-onalar, 5–11 sinf guruhlari, fanlar, dars jadvali, 30 kunlik davomat va baholar, uy vazifalari, imtihonlar, oylik hisob-fakturalar va to'lovlar, yotoqxona (bino/xona/joy), guruh chatlari. Ishlab chiqarishda `SEED_DEMO=false` qiling.
 
-> Ishlab chiqarishda seed'dagi parollarni albatta almashtiring (`Profil → Parolni o'zgartirish`).
+Telegram ulash: ota-ona/o'quvchi/xodim botda `/start` → telefon raqamini yuboradi → admin panelda kiritilgan raqam bo'yicha avtomatik ulanadi (yoki admin panel bergan bir martalik kod → `/link 123456`). Admin xodim kartasida Telegram ID/username ni ham to'g'ridan-to'g'ri kiritishi mumkin.
 
 ---
 
@@ -144,6 +151,8 @@ Tutor va o'qituvchilar odatda faqat bot orqali ishlaydi. Telegram akkauntini tiz
 | `TELEGRAM_MODE` | `polling` (dev) yoki `webhook` (prod) |
 | `TELEGRAM_WEBHOOK_SECRET` | webhook so'rovlarini tekshirish uchun tasodifiy satr |
 | `TELEGRAM_SUPER_ADMIN_IDS` | birinchi `/start`da avtomatik Super Admin bo'ladigan Telegram ID'lar |
+| `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, `SUPER_ADMIN_PHONE` | Bosh Admin hisobi (seed). Parolda `#` bo'lsa qo'shtirnoqqa oling |
+| `SEED_DEMO`, `SEED_DEMO_PASSWORD` | demo ma'lumotlar va ularning paroli |
 | `API_PUBLIC_URL`, `WEB_PUBLIC_URL` | ommaviy URL'lar (webhook va bot xabarlaridagi havolalar) |
 | `CORS_ORIGINS` | vergul bilan ajratilgan ruxsat etilgan originlar |
 | `TZ` | `Asia/Tashkent` |
@@ -191,16 +200,18 @@ Swagger UI: `GET /api/docs` (OpenAPI 3). Barcha endpointlar `/api` prefiksi bila
 | Guruh | Endpointlar (qisqacha) |
 |---|---|
 | Auth | `POST /auth/login`, `/auth/refresh`, `/auth/logout`, `GET /auth/me`, `POST /auth/change-password`, `POST /auth/telegram-link-code` |
-| Users | `GET/POST /users`, `GET/PATCH/DELETE /users/:id`, `GET /users/roles`, `POST /users/:id/unlink-telegram` |
-| Branches | `GET/POST /branches`, `GET/PATCH/DELETE /branches/:id`, `/branches/departments/*`, `/branches/groups/*` |
-| Surveys | `GET/POST /surveys`, `GET/PATCH/DELETE /surveys/:id`, `POST /surveys/:id/{duplicate,send,schedule,remind,status}`, `GET /surveys/:id/results`, `GET /surveys/:id/export?format=csv\|xlsx\|pdf` |
-| Reports | `GET /reports`, `GET /reports/:id`, `POST /reports/:id/review`, `DELETE /reports/:id` |
-| Analytics | `GET /analytics/{dashboard,overview,completion,activity,branches,rating,reports,performers}` (`range=7d\|30d\|90d\|12m`, `branchId`) |
-| KPI | `GET /kpi/metrics`, `PATCH /kpi/metrics/:id`, `GET /kpi/leaderboard?period=`, `GET /kpi/user/:id`, `POST /kpi/compute` |
-| Announcements | `GET/POST /announcements`, `PATCH/DELETE /announcements/:id`, `POST /announcements/:id/resend` |
-| Tasks | `GET/POST /tasks`, `PATCH/DELETE /tasks/:id` |
-| Notifications | `GET /notifications`, `POST /notifications/broadcast`, `POST /notifications/retry` |
-| Settings / Audit | `GET/PUT /settings`, `GET /settings/bot`, `GET /audit` |
+| Users / Roles | `GET/POST /users`, `GET/PATCH/DELETE /users/:id`, `GET /users/roles`; `GET/POST /roles`, `PATCH/DELETE /roles/:id`, `GET /roles/permissions` |
+| Students / Parents | `GET/POST /students`, `GET/PATCH/DELETE /students/:id`, `GET /students/export` (xlsx); `GET/POST /parents`, `GET/PATCH/DELETE /parents/:id` (farzandlar `studentIds` orqali bog‘lanadi) |
+| Groups / Subjects | `GET/POST /groups`, `GET/PATCH/DELETE /groups/:id`, `POST/DELETE /groups/:id/students`; `GET/POST /subjects`, `/subjects/rooms` |
+| Schedule | `GET /schedule` (`groupId`, `teacherId`, `weekday`), `POST /schedule/lessons`, `PATCH/DELETE /schedule/lessons/:id`, `GET /schedule/pdf` |
+| Attendance | `GET /attendance`, `GET /attendance/sheet`, `POST /attendance/mark` (ota-onaga avtomatik xabar), `GET /attendance/stats`, `GET /attendance/student/:id/calendar` |
+| Grades / Exams | `GET/POST /grades`, `GET /grades/sheet`, `PATCH/DELETE /grades/:id`; `GET/POST /exams`, `POST /exams/:id/results` |
+| Homework | `GET/POST /homework`, `GET/PATCH/DELETE /homework/:id`, `POST /homework/:id/submit`, `POST /homework/:id/review` |
+| Finance | `GET /finance/summary`, `/invoices`, `/payments`, `/debtors`, `/expenses`, `POST /finance/invoices`, `/invoices/generate`, `/payments`, `/expenses`, `GET /finance/export?type=` |
+| Dorm | `GET/POST /dorm`, `/dorm/buildings`, `/dorm/rooms`, `POST /dorm/assign`, `/dorm/checkout/:studentId`, `/dorm/logs`, `/dorm/rollcall`, `GET /dorm/students`, `/dorm/student/:id` |
+| Messages | `GET /messages/groups`, `GET/POST /messages/groups/:id`, `DELETE /messages/:id`, `POST /messages/:id/pin` |
+| School / Analytics | `GET /school/overview` (Direktor/CEO dashboard), `GET /analytics/*`, `GET /kpi/*` |
+| Branches / Announcements / Tasks / Notifications / Settings / Audit | avvalgidek (`/branches`, `/announcements`, `/tasks`, `/notifications`, `/settings`, `/audit`) |
 | Telegram | `POST /telegram/webhook` (faqat webhook rejimida, secret token bilan) |
 
 ---
@@ -213,12 +224,16 @@ npm run build                # ikkalasini build qilish
 npm run typecheck            # tsc (api + web)
 npm run db:reset             # bazani tozalab qayta seed qilish (faqat dev!)
 npm run bot:webhook -w apps/api
-npx tsx scripts/bot-simulate.ts   # (apps/api) bot oqimlarini Telegram'siz sinash
+npx tsx scripts/bot-simulate-school.ts   # (apps/api) maktab bot oqimlarini Telegram'siz sinash
 ```
 
 ## 8. Ma'lumotlar bazasi sxemasi (asosiy jadvallar)
 
-`users` · `roles` · `permissions` · `role_permissions` · `branches` · `departments` · `groups` · `surveys` · `survey_questions` · `survey_options` · `survey_assignments` · `survey_responses` · `survey_answers` · `reports` · `notifications` · `announcements` · `announcement_reads` · `tasks` · `kpi_metrics` · `kpi_results` · `audit_logs` · `settings` · `refresh_tokens` · `telegram_link_codes`
+Foydalanuvchilar: `users` · `roles` · `permissions` · `role_permissions` · `branches` · `departments` · `refresh_tokens` · `telegram_link_codes`
+Maktab: `students` · `parents` · `parent_students` · `groups` · `group_teachers` · `subjects` · `rooms` · `schedules` · `lessons` · `attendance` · `grades` · `homework` · `homework_submissions` · `exams` · `exam_results` · `group_messages`
+Moliya: `tuition_plans` · `invoices` · `payments` · `discounts` · `expenses`
+Yotoqxona: `dormitories` · `dorm_buildings` · `dorm_rooms` · `dorm_beds` · `dorm_assignments` · `dorm_logs`
+Umumiy: `surveys*` · `reports` · `notifications` · `announcements` · `tasks` · `kpi_*` · `audit_logs` · `settings`
 
 To'liq ta'rif: `apps/api/prisma/schema.prisma`.
 

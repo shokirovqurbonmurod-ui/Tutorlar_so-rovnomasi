@@ -38,7 +38,7 @@ export function SidebarNav({ collapsed, onNavigate }: { collapsed?: boolean; onN
           {group && !collapsed && <div className="text-muted-foreground/70 px-3 pb-1 text-[11px] font-medium tracking-wider uppercase">{group}</div>}
           {group && collapsed && <div className="bg-border mx-3 my-2 h-px" />}
           {list.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(item.href + '/');
+            const active = pathname === item.href || (pathname.startsWith(item.href + '/') && !items.some((o) => o.href !== item.href && o.href.startsWith(item.href + '/') && (pathname === o.href || pathname.startsWith(o.href + '/'))));
             const link = (
               <Link
                 key={item.href}

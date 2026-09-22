@@ -1,4 +1,4 @@
-export type RoleKey = 'SUPER_ADMIN' | 'DIRECTOR' | 'CEO' | 'HR_ADMIN' | 'TUTOR' | 'TEACHER';
+export type RoleKey = 'SUPER_ADMIN' | 'DIRECTOR' | 'CEO' | 'HR_ADMIN' | 'TUTOR' | 'TEACHER' | 'PARENT' | 'STUDENT' | 'ACCOUNTANT' | 'ADMINISTRATOR' | 'DORM_MANAGER' | 'RECEPTION' | 'MARKETING' | 'IT_ADMIN' | 'CUSTOM';
 export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'BLOCKED' | 'PENDING';
 export type SurveyStatus = 'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
 export type SurveyAudience = 'ALL' | 'TUTORS' | 'TEACHERS' | 'BRANCH' | 'CUSTOM';
@@ -7,7 +7,7 @@ export type ReportType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'PROBLEM' | 'STUDENT_F
 export type ReportStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'NEEDS_REVISION';
 export type KpiPeriod = 'WEEKLY' | 'MONTHLY' | 'QUARTERLY';
 
-export interface Role { key: RoleKey; name: string }
+export interface Role { id?: string; key: RoleKey; name: string; slug?: string }
 export interface BranchRef { id: string; name: string; code?: string }
 export interface DepartmentRef { id: string; name: string }
 

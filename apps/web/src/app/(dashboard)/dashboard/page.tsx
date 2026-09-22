@@ -1,273 +1,139 @@
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
-import { Users, GraduationCap, ClipboardCheck, FileClock, Star, Send, ArrowRight, Clock, CheckCircle2, FileText, UserPlus, Megaphone, ClipboardList, Building2, Trophy } from 'lucide-react';
-import { api } from '@/lib/api';
-import type { DashboardData, Branch } from '@/lib/types';
+import { GraduationCap, Users, UserCheck, Star, Wallet, AlertCircle, UsersRound, BedDouble, ArrowRight, TrendingUp, TrendingDown, NotebookPen, FlaskConical, Building2, HeartHandshake, Sparkles, School, BookOpenText, FileClock } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
+import { useOverview } from '@/lib/school';
+import { fmtUZS, fmtUZSshort } from '@/lib/labels';
+import { fmtDate, dayjs, cn } from '@/lib/utils';
 import { PageHeader } from '@/components/shared/page-header';
 import { StatCard } from '@/components/shared/stat-card';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AreaTrend, Bars, Donut, ChartLegend, COLORS, LineTrend } from '@/components/charts';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
-import { REPORT_STATUS, REPORT_TYPES, ROLE_LABELS } from '@/lib/labels';
-import { fromNow, dayjs, cn, pct } from '@/lib/utils';
-import { UserCell } from '@/components/shared/user-cell';
-import { Rating } from '@/components/shared/rating';
-import { FilterSelect } from '@/components/shared/filters';
 import { EmptyState } from '@/components/shared/empty-state';
-
-const RANGES = [
-  { value: '7d', label: '7 kun' },
-  { value: '30d', label: '30 kun' },
-  { value: '90d', label: '90 kun' },
-  { value: '12m', label: '12 oy' },
-];
-
-const KIND_ICON = { response: ClipboardCheck, report: FileText, user: UserPlus, survey: ClipboardList, announcement: Megaphone } as const;
-const KIND_LABEL = { response: "So'rovnoma to'ldirdi", report: 'Hisobot topshirdi', user: "Ro'yxatdan o'tdi", survey: "So'rovnoma yuborildi", announcement: "E'lon chiqdi" } as const;
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
+import { AreaTrend, Bars, Donut, ChartLegend, Gauge } from '@/components/charts';
+import { BranchFilter } from '@/components/school/pickers';
+import { LogoMark } from '@/components/layout/logo';
 
 export default function DashboardPage() {
-  const { user, is } = useAuth();
-  const [range, setRange] = React.useState('30d');
+  const { user, is, can } = useAuth();
   const [branchId, setBranchId] = React.useState('');
-  const canPickBranch = !is('DIRECTOR');
-
-  const branches = useQuery({ queryKey: ['branches', 'all'], queryFn: () => api.get<Branch[]>('/api/branches'), enabled: canPickBranch });
-  const { data, isLoading } = useQuery({
-    queryKey: ['dashboard', range, branchId],
-    queryFn: () => api.get<DashboardData>('/api/analytics/dashboard', { range, branchId: branchId || undefined }),
-    refetchInterval: 120_000,
-  });
-  const o = data?.overview;
-  const greeting = React.useMemo(() => {
-    const h = new Date().getHours();
-    return h < 12 ? 'Xayrli tong' : h < 18 ? 'Xayrli kun' : 'Xayrli kech';
-  }, []);
-
-  const statusData = (data?.reports.byStatus ?? []).map((s, i) => ({ name: REPORT_STATUS[s.status]?.label ?? s.status, value: s.count, color: { PENDING: 'var(--chart-3)', APPROVED: 'var(--chart-2)', REJECTED: 'var(--chart-4)', NEEDS_REVISION: 'var(--chart-1)' }[s.status] ?? COLORS[i] }));
-  const typeData = (data?.reports.byType ?? []).map((t) => ({ name: REPORT_TYPES[t.type]?.label ?? t.type, count: t.count }));
+  const o = useOverview(branchId || undefined);
+  const d = o.data;
+  const greeting = React.useMemo(() => { const h = new Date().getHours(); return h < 12 ? 'Xayrli tong' : h < 18 ? 'Xayrli kun' : 'Xayrli kech'; }, []);
+  const isCeo = is('CEO', 'SUPER_ADMIN');
+  const fin = d?.finance;
+  const monthly = (fin?.monthly ?? []).map((m) => ({ ...m, label: /^\d{4}-\d{2}$/.test(m.month) ? dayjs(`${m.month}-01`).format('MMM') : m.month }));
+  const attTrend = (d?.attendance.trend ?? []).map((t) => ({ ...t, rate: t.present + t.absent + t.late ? Math.round(((t.present + t.late) / (t.present + t.absent + t.late)) * 100) : null }));
+  const gradeDist = (d?.grades.distribution ?? []).map((g) => ({ name: `${g.value} baho`, value: g.count, color: g.value >= 5 ? 'var(--success)' : g.value === 4 ? 'var(--info)' : g.value === 3 ? 'var(--warning)' : 'var(--destructive)' }));
 
   return (
-    <div>
-      <PageHeader
-        title={<span>{greeting}, {user?.fullName.split(' ')[0]} 👋</span>}
-        description={`${dayjs(data?.scope.from).format('DD MMM')} — ${dayjs(data?.scope.to).format('DD MMM YYYY')} · ${user?.branch && is('DIRECTOR') ? user.branch.name : branchId ? branches.data?.find((b) => b.id === branchId)?.name : 'Barcha filiallar'}`}
-        actions={
-          <>
-            {canPickBranch && <FilterSelect value={branchId} onChange={setBranchId} allLabel="Barcha filiallar" options={(branches.data ?? []).map((b) => ({ value: b.id, label: b.name }))} className="sm:w-48" />}
-            <Tabs value={range} onValueChange={setRange}>
-              <TabsList>
-                {RANGES.map((r) => (
-                  <TabsTrigger key={r.value} value={r.value} className="px-2.5 text-xs sm:px-3 sm:text-sm">{r.label}</TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          </>
-        }
-      />
-
-      {/* KPI cards */}
-      <div className="stagger grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6 lg:gap-4">
-        <StatCard loading={isLoading} label="Tutorlar" value={o?.totalTutors ?? 0} icon={GraduationCap} tone="primary" hint={`${o?.activeUsers ?? 0} faol xodim`} />
-        <StatCard loading={isLoading} label="O‘qituvchilar" value={o?.totalTeachers ?? 0} icon={Users} tone="violet" hint={`${o?.telegramLinked ?? 0} ta Telegramga ulangan`} />
-        <StatCard loading={isLoading} label="Yuborilgan so‘rovnomalar" value={o?.surveysSent ?? 0} icon={Send} tone="info" hint={`${o?.activeSurveys ?? 0} ta hozir faol`} />
-        <StatCard loading={isLoading} label="Bajarilish darajasi" value={pct(o?.completionRate)} icon={ClipboardCheck} tone="success" delta={o?.completionRateDelta} />
-        <StatCard loading={isLoading} label="Kutilayotgan hisobotlar" value={o?.pendingReports ?? 0} icon={FileClock} tone="warning" delta={o?.reportsDelta} deltaLabel="hisobotlar oqimi" />
-        <StatCard loading={isLoading} label="O‘rtacha baho" value={o?.avgRating ? o.avgRating.toFixed(2) : '—'} icon={Star} tone="destructive" hint={`${o?.surveysCompleted ?? 0} ta javob asosida`} />
+    <div className="animate-fade-up space-y-6">
+      <div className="relative overflow-hidden rounded-3xl bg-[linear-gradient(135deg,oklch(0.28_0.09_262)_0%,oklch(0.45_0.17_255)_55%,oklch(0.62_0.19_240)_100%)] p-6 text-white shadow-lg sm:p-8">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgb(255_255_255/0.08)_1px,transparent_0)] bg-[size:24px_24px]" />
+        <div className="pointer-events-none absolute -right-10 -bottom-16 opacity-15"><LogoMark className="size-64 drop-shadow-none" /></div>
+        <div className="relative flex flex-wrap items-center gap-4">
+          <div className="flex-1">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur"><Sparkles className="size-3.5" /> TARGET INTERNATIONAL SCHOOL</div>
+            <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">{greeting}, {user?.fullName.split(' ')[0]} 👋</h1>
+            <p className="mt-1 text-sm text-white/75">{dayjs().format('D MMMM YYYY, dddd')} · {user?.position ?? user?.role.name}{user?.branch ? ` · ${user.branch.name}` : ''}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {can('attendance.mark') && <Button asChild variant="secondary" size="sm"><Link href="/attendance"><UserCheck /> Davomat</Link></Button>}
+            {can('grades.manage') && <Button asChild variant="secondary" size="sm"><Link href="/grades"><Star /> Baho qo'yish</Link></Button>}
+            {can('finance.manage') && <Button asChild variant="secondary" size="sm"><Link href="/finance/payments"><Wallet /> To'lov</Link></Button>}
+            {can('students.manage') && <Button asChild size="sm" className="bg-white text-primary hover:bg-white/90"><Link href="/students"><GraduationCap /> O'quvchi qo'shish</Link></Button>}
+          </div>
+        </div>
       </div>
 
-      {/* Row: completion + rating */}
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <CardHeader>
-            <CardTitle>So‘rovnoma bajarilishi</CardTitle>
-            <CardDescription>Kunlik tayinlangan va bajarilgan so‘rovnomalar</CardDescription>
-            <CardAction>
-              <ChartLegend items={[{ name: 'Tayinlangan', color: COLORS[0] }, { name: 'Bajarilgan', color: COLORS[1] }]} />
-            </CardAction>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? <Skeleton className="h-[260px]" /> : <AreaTrend data={data?.completion ?? []} xKey="date" series={[{ key: 'assigned', name: 'Tayinlangan' }, { key: 'completed', name: 'Bajarilgan' }]} />}
-          </CardContent>
+      <div className="flex flex-wrap items-center gap-2"><BranchFilter value={branchId} onChange={setBranchId} />{d && <span className="text-muted-foreground text-xs">Yangilangan: {dayjs().format('HH:mm')}</span>}</div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="O'quvchilar" value={d?.counts.students ?? '—'} hint={`+${d?.counts.newStudents ?? 0} shu oyda · ${d?.counts.boarders ?? 0} yotoqxonada`} icon={GraduationCap} tone="primary" loading={o.isLoading} />
+        <StatCard label="Bugungi davomat" value={d?.attendance.today.rate === null || d?.attendance.today.rate === undefined ? '—' : `${d.attendance.today.rate}%`} hint={d?.attendance.today.total ? `${d.attendance.today.absent} kelmagan · ${d.attendance.today.late} kechikkan` : "Bugun yo'qlama qilinmagan"} icon={UserCheck} tone={(d?.attendance.today.rate ?? 100) < 85 ? 'warning' : 'success'} loading={o.isLoading} />
+        <StatCard label="O'rtacha baho" value={d?.grades.avg ?? '—'} hint={`${d?.grades.count ?? 0} ta baho (30 kun)`} icon={Star} tone="info" loading={o.isLoading} />
+        {can('finance.view') ? <StatCard label="Qarzdorlik" value={fmtUZSshort(fin?.debt)} hint={<Link href="/finance/debts" className="text-primary inline-flex items-center gap-1 hover:underline">{fin?.debtors ?? 0} qarzdor <ArrowRight className="size-3" /></Link>} icon={AlertCircle} tone={(fin?.debt ?? 0) > 0 ? 'destructive' : 'success'} loading={o.isLoading} />
+          : <StatCard label="Guruhlar" value={d?.counts.groups ?? '—'} icon={UsersRound} tone="violet" loading={o.isLoading} />}
+      </div>
+
+      {can('finance.view') && (
+        <div className="grid gap-4 sm:grid-cols-3">
+          <StatCard label={isCeo ? 'Daromad (shu oy)' : "To'lovlar (shu oy)"} value={fmtUZSshort(fin?.income)} icon={TrendingUp} tone="success" loading={o.isLoading} />
+          <StatCard label="Xarajat (shu oy)" value={fmtUZSshort(fin?.expenses)} icon={TrendingDown} tone="warning" loading={o.isLoading} />
+          <StatCard label="Foyda" value={fmtUZSshort(fin?.profit)} icon={Wallet} tone={(fin?.profit ?? 0) >= 0 ? 'primary' : 'destructive'} loading={o.isLoading} />
+        </div>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-2"><CardTitle className="text-base">Davomat dinamikasi</CardTitle><CardDescription>So'nggi 14 kun · kelgan / kechikkan / kelmagan</CardDescription></CardHeader>
+          <CardContent>{o.isLoading ? <Skeleton className="h-[240px]" /> : attTrend.length ? <AreaTrend data={attTrend} xKey="d" height={240} series={[{ key: 'present', name: 'Kelgan', color: 'var(--success)' }, { key: 'late', name: 'Kechikkan', color: 'var(--warning)' }, { key: 'absent', name: 'Kelmagan', color: 'var(--destructive)' }]} /> : <EmptyState className="py-8" title="Davomat ma'lumoti yo'q" />}</CardContent>
         </Card>
         <Card>
-          <CardHeader>
-            <CardTitle>O‘rtacha baho dinamikasi</CardTitle>
-            <CardDescription>Haftalik, 1–5 shkala</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? <Skeleton className="h-[260px]" /> : (data?.rating.length ?? 0) > 0 ? <LineTrend data={data?.rating ?? []} xKey="week" series={[{ key: 'avg', name: 'O‘rtacha baho', color: 'var(--chart-3)' }]} yDomain={[1, 5]} formatter={(v) => v.toFixed(2)} /> : <EmptyState title="Baholar yo‘q" className="py-10" />}
-          </CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-base">Oylik davomat</CardTitle><CardDescription>{dayjs().format('MMMM')} oyi</CardDescription></CardHeader>
+          <CardContent className="flex flex-col items-center">{o.isLoading ? <Skeleton className="h-[160px] w-full" /> : <Gauge value={d?.attendance.month.rate ?? 0} label="Davomat" color={(d?.attendance.month.rate ?? 100) < 85 ? 'var(--warning)' : 'var(--success)'} />}<div className="text-muted-foreground mt-2 grid w-full grid-cols-2 gap-2 text-center text-xs"><div className="rounded-lg border p-2"><div className="text-foreground text-lg font-semibold">{d?.attendance.month.absent ?? 0}</div>kelmagan</div><div className="rounded-lg border p-2"><div className="text-foreground text-lg font-semibold">{d?.attendance.month.late ?? 0}</div>kechikkan</div></div></CardContent>
         </Card>
       </div>
 
-      {/* Row: branches + activity */}
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <CardHeader>
-            <CardTitle>Filiallar bo‘yicha ko‘rsatkichlar</CardTitle>
-            <CardDescription>Bajarilish, hisobotlar va KPI taqqoslash</CardDescription>
-            <CardAction>
-              <Button variant="ghost" size="sm" asChild><Link href="/branches">Barchasi <ArrowRight /></Link></Button>
-            </CardAction>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16" />)}</div>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2">
-                {data?.branches.map((b) => (
-                  <Link key={b.id} href={`/branches/${b.id}`} className="hover:bg-accent/50 group rounded-xl border p-4 transition-colors">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <span className="bg-primary/10 text-primary flex size-9 items-center justify-center rounded-xl"><Building2 className="size-4" /></span>
-                        <div>
-                          <div className="font-medium">{b.name}</div>
-                          <div className="text-muted-foreground text-xs">{b.staff} xodim · {b.students ?? 0} o‘quvchi</div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="tabular text-lg font-semibold">{b.kpiScore ?? '—'}</div>
-                        <div className="text-muted-foreground text-[11px]">KPI</div>
-                      </div>
-                    </div>
-                    <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
-                      <div>
-                        <div className="text-muted-foreground mb-1">Bajarilish</div>
-                        <Progress value={b.completionRate ?? 0} className="h-1.5" />
-                        <div className="tabular mt-1 font-medium">{pct(b.completionRate)}</div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground mb-1">Tasdiqlangan</div>
-                        <Progress value={b.approvedRate ?? 0} className="h-1.5" indicatorClassName="bg-success" />
-                        <div className="tabular mt-1 font-medium">{pct(b.approvedRate)}</div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground mb-1">Baho</div>
-                        <Rating value={b.avgRating} showValue={false} />
-                        <div className="tabular mt-1 font-medium">{b.avgRating?.toFixed(2) ?? '—'}</div>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-                {data?.branches.length === 0 && <EmptyState title="Filial topilmadi" className="md:col-span-2" />}
-              </div>
-            )}
-          </CardContent>
+      <div className="grid gap-4 lg:grid-cols-3">
+        {can('finance.view') && (
+          <Card className="lg:col-span-2">
+            <CardHeader className="pb-2"><CardTitle className="text-base">Moliya · 6 oy</CardTitle><CardDescription>Kutilgan tushum, haqiqiy daromad va xarajatlar</CardDescription></CardHeader>
+            <CardContent>{o.isLoading ? <Skeleton className="h-[240px]" /> : <Bars data={monthly} xKey="label" height={240} series={[{ key: 'expected', name: 'Kutilgan', color: 'var(--muted-foreground)' }, { key: 'income', name: 'Daromad', color: 'var(--success)' }, { key: 'expenses', name: 'Xarajat', color: 'var(--destructive)' }]} formatter={(v) => fmtUZS(v)} />}</CardContent>
+          </Card>
+        )}
+        <Card className={cn(!can('finance.view') && 'lg:col-span-1')}>
+          <CardHeader className="pb-2"><CardTitle className="text-base">Baholar taqsimoti</CardTitle><CardDescription>So'nggi 30 kun</CardDescription></CardHeader>
+          <CardContent>{o.isLoading ? <Skeleton className="h-[220px]" /> : gradeDist.length ? <><Donut data={gradeDist} centerLabel="O'rtacha" centerValue={d?.grades.avg ?? '—'} /><ChartLegend items={gradeDist.map((g) => ({ name: g.name, color: g.color, value: g.value }))} /></> : <EmptyState className="py-8" title="Baholar yo'q" />}</CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Faollik</CardTitle>
-            <CardDescription>Kunlik faol tutor va o‘qituvchilar</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? <Skeleton className="h-[260px]" /> : <Bars data={data?.activity ?? []} xKey="date" xFormat={(v) => dayjs(v).format('DD.MM')} series={[{ key: 'tutors', name: 'Tutorlar' }, { key: 'teachers', name: 'O‘qituvchilar', color: 'var(--chart-5)' }]} stacked />}
-          </CardContent>
-        </Card>
+        {!can('finance.view') && <PeopleCard d={d} loading={o.isLoading} className="lg:col-span-1" />}
       </div>
 
-      {/* Row: reports + top + recent */}
-      <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {can('finance.view') && <PeopleCard d={d} loading={o.isLoading} />}
         <Card>
-          <CardHeader>
-            <CardTitle>Hisobotlar holati</CardTitle>
-            <CardDescription>Davr bo‘yicha ko‘rib chiqish natijalari</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? <Skeleton className="h-[220px]" /> : statusData.length ? <Donut data={statusData} centerLabel="hisobot" /> : <EmptyState title="Hisobot yo‘q" className="py-8" />}
-            <div className="mt-2"><ChartLegend items={statusData.map((s) => ({ name: s.name, color: s.color, value: s.value }))} /></div>
+          <CardHeader className="pb-2"><CardTitle className="text-base">Bugun e'tibor</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <Row icon={NotebookPen} label="Faol uy vazifalari" value={d?.homework.open ?? 0} href="/homework" />
+            <Row icon={FileClock} label="Tekshirish kutayotgan" value={d?.homework.pendingReview ?? 0} href="/homework" tone={(d?.homework.pendingReview ?? 0) > 0 ? 'warning' : undefined} />
+            <Row icon={BedDouble} label="Yotoqxona yozuvlari" value={d?.dormToday ?? 0} href="/dorm/logs" />
+            <Row icon={FileClock} label="Hisobotlar (kutilmoqda)" value={d?.reportsPending ?? 0} href="/reports" />
           </CardContent>
         </Card>
         <Card>
-          <CardHeader>
-            <CardTitle>Hisobot turlari</CardTitle>
-            <CardDescription>Qaysi turdagi hisobotlar ko‘p</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? <Skeleton className="h-[220px]" /> : <Bars data={typeData} xKey="name" series={[{ key: 'count', name: 'Soni' }]} height={230} horizontal colorful />}
-          </CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-base">Yaqin imtihonlar</CardTitle></CardHeader>
+          <CardContent className="space-y-2">{!d?.upcomingExams.length && <p className="text-muted-foreground text-xs">Rejalashtirilgan imtihon yo'q</p>}{d?.upcomingExams.slice(0, 5).map((e) => <Link key={e.id} href="/exams" className="hover:bg-accent/60 -mx-2 flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm"><FlaskConical className="text-muted-foreground size-4" /><div className="min-w-0 flex-1"><div className="truncate font-medium">{e.title}</div><div className="text-muted-foreground text-xs">{e.group.name} · {e.subject.name}</div></div><Badge variant="secondary">{fmtDate(e.date)}</Badge></Link>)}</CardContent>
         </Card>
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Trophy className="size-4 text-amber-500" /> Eng faol xodimlar</CardTitle>
-            <CardDescription>KPI bo‘yicha yetakchilar</CardDescription>
-            <CardAction><Button variant="ghost" size="sm" asChild><Link href="/kpi">KPI <ArrowRight /></Link></Button></CardAction>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {isLoading ? [1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-9" />) : data?.top.slice(0, 6).map((t, i) => (
-              <Link key={t.id} href={`/users/${t.id}`} className="hover:bg-accent/50 -mx-2 flex items-center gap-2 rounded-lg px-2 py-1 transition-colors">
-                <span className={cn('tabular w-5 text-center text-xs font-semibold', i === 0 ? 'text-amber-500' : i === 1 ? 'text-zinc-400' : i === 2 ? 'text-orange-600' : 'text-muted-foreground')}>{i + 1}</span>
-                <div className="min-w-0 flex-1"><UserCell name={t.fullName} sub={`${ROLE_LABELS[t.role.key]} · ${t.branch?.name ?? '—'}`} avatarUrl={t.avatarUrl} size="sm" /></div>
-                <Badge variant="primary" className="tabular">{t.kpiScore ?? '—'}</Badge>
-              </Link>
-            ))}
-            {!isLoading && data?.top.length === 0 && <EmptyState title="Ma’lumot yo‘q" className="py-6" />}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Clock className="size-4 text-primary" /> Yaqin muddatlar</CardTitle>
-            <CardDescription>Faol so‘rovnomalar tugash muddati</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {isLoading ? [1, 2, 3].map((i) => <Skeleton key={i} className="h-12" />) : data?.deadlines.map((d) => {
-              const p = d.assigned ? Math.round((d.completed / d.assigned) * 100) : 0;
-              const soon = dayjs(d.deadline).diff(dayjs(), 'hour') < 24;
-              return (
-                <Link key={d.id} href={`/surveys/${d.id}`} className="hover:bg-accent/50 -mx-2 block rounded-lg px-2 py-1.5 transition-colors">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="truncate text-sm font-medium">{d.title}</div>
-                    <Badge variant={soon ? 'destructive' : 'muted'} className="shrink-0">{fromNow(d.deadline)}</Badge>
-                  </div>
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <Progress value={p} className="h-1.5" indicatorClassName={p >= 80 ? 'bg-success' : p >= 50 ? 'bg-warning' : 'bg-destructive'} />
-                    <span className="tabular text-muted-foreground shrink-0 text-xs">{d.completed}/{d.assigned}</span>
-                  </div>
-                </Link>
-              );
-            })}
-            {!isLoading && data?.deadlines.length === 0 && <EmptyState icon={CheckCircle2} title="Yaqin muddat yo‘q" className="py-6" />}
-          </CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-base">Filiallar</CardTitle></CardHeader>
+          <CardContent className="space-y-3">{d?.branches.map((b) => <Link key={b.id} href={`/branches/${b.id}`} className="block"><div className="flex items-center justify-between text-sm"><span className="inline-flex items-center gap-1.5 font-medium"><Building2 className="text-muted-foreground size-3.5" />{b.name}</span><span className="text-muted-foreground text-xs">{b.students} o'quvchi</span></div><Progress value={b.attendance ?? 0} className="mt-1 h-1.5" /><div className="text-muted-foreground mt-0.5 flex justify-between text-[11px]"><span>davomat {b.attendance ?? '—'}%</span>{can('finance.view') && <span>{fmtUZSshort(b.income)} · qarz {fmtUZSshort(b.debt)}</span>}</div></Link>)}</CardContent>
         </Card>
       </div>
-
-      {/* Recent activity */}
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle>So‘nggi faollik</CardTitle>
-          <CardDescription>Xodimlarning real vaqtdagi harakatlari</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-3">{[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-10" />)}</div>
-          ) : (
-            <ul className="divide-y">
-              {data?.recent.map((r) => {
-                const Icon = KIND_ICON[r.kind] ?? ClipboardCheck;
-                const href = r.kind === 'response' && r.meta?.surveyId ? `/surveys/${r.meta.surveyId}` : r.kind === 'report' ? `/reports?id=${r.id.replace(/^r-|^rep-/, '')}` : r.user ? `/users/${r.user.id}` : '#';
-                return (
-                  <li key={r.id} className="flex items-center gap-3 py-2.5">
-                    <span className="bg-muted text-muted-foreground flex size-8 shrink-0 items-center justify-center rounded-lg"><Icon className="size-4" /></span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm"><span className="font-medium">{r.user?.fullName ?? 'Tizim'}</span> <span className="text-muted-foreground">{KIND_LABEL[r.kind] ?? r.kind}</span></div>
-                      <Link href={href} className="text-muted-foreground hover:text-foreground block truncate text-xs">{r.title}</Link>
-                    </div>
-                    {typeof r.meta?.rating === 'number' && <Rating value={r.meta.rating as number} showValue={false} />}
-                    <span className="text-muted-foreground shrink-0 text-xs">{fromNow(r.at)}</span>
-                  </li>
-                );
-              })}
-              {data?.recent.length === 0 && <EmptyState title="Faollik yo‘q" className="py-8" />}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
+}
+
+function PeopleCard({ d, loading, className }: { d?: ReturnType<typeof useOverview>['data']; loading: boolean; className?: string }) {
+  return (
+    <Card className={className}>
+      <CardHeader className="pb-2"><CardTitle className="text-base">Jamoa</CardTitle></CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        {loading ? <Skeleton className="h-28" /> : <>
+          <Row icon={BookOpenText} label="O'qituvchilar" value={d?.counts.teachers ?? 0} href="/teachers" />
+          <Row icon={School} label="Tutorlar" value={d?.counts.tutors ?? 0} href="/tutors" />
+          <Row icon={Users} label="Xodimlar" value={d?.counts.staff ?? 0} href="/users" />
+          <Row icon={UsersRound} label="Guruhlar" value={d?.counts.groups ?? 0} href="/groups" />
+          <Row icon={HeartHandshake} label="Ota-onalar (botda)" value={`${d?.counts.parentsLinked ?? 0}/${d?.counts.parentsTotal ?? 0}`} href="/parents" />
+        </>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Row({ icon: Icon, label, value, href, tone }: { icon: React.ComponentType<{ className?: string }>; label: string; value: React.ReactNode; href: string; tone?: 'warning' }) {
+  return <Link href={href} className="hover:bg-accent/60 -mx-2 flex items-center gap-2 rounded-lg px-2 py-1.5"><Icon className="text-muted-foreground size-4" /><span className="flex-1">{label}</span><span className={cn('font-semibold', tone === 'warning' && 'text-warning')}>{value}</span><ArrowRight className="text-muted-foreground size-3.5" /></Link>;
 }

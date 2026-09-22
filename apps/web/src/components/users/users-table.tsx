@@ -8,7 +8,7 @@ import { api } from '@/lib/api';
 import type { Paginated, RoleKey, User, UserStatus } from '@/lib/types';
 import { ROLE_LABELS, USER_STATUS } from '@/lib/labels';
 import { useAuth } from '@/lib/auth';
-import { useBranches } from '@/lib/queries';
+import { useBranches, useRoles } from '@/lib/queries';
 import { useDebounce } from '@/hooks/use-debounce';
 import { PageHeader } from '@/components/shared/page-header';
 import { DataTable, type Column } from '@/components/shared/data-table';
@@ -34,6 +34,7 @@ export function UsersTable({ role, title, description }: { role?: RoleKey; title
   const [search, setSearch] = React.useState(sp.get('q') ?? '');
   const [status, setStatus] = React.useState('');
   const [roleF, setRoleF] = React.useState<string>(role ?? '');
+  const rolesQ = useRoles();
   const [branchId, setBranchId] = React.useState('');
   const [telegram, setTelegram] = React.useState('');
   const [page, setPage] = React.useState(1);
@@ -41,7 +42,7 @@ export function UsersTable({ role, title, description }: { role?: RoleKey; title
   React.useEffect(() => setPage(1), [dq, status, roleF, branchId, telegram]);
   React.useEffect(() => { setSearch(sp.get('q') ?? ''); }, [sp]);
 
-  const params = { page, limit: 20, search: dq || undefined, status: status || undefined, role: (role ?? roleF) || undefined, branchId: branchId || undefined, telegram: telegram || undefined };
+  const params = { page, limit: 20, search: dq || undefined, status: status || undefined, role: role || undefined, roleId: !role && roleF ? roleF : undefined, branchId: branchId || undefined, telegram: telegram || undefined };
   const { data, isLoading } = useQuery({ queryKey: ['users', params], queryFn: () => api.get<Paginated<User>>('/api/users', params), placeholderData: (prev) => prev });
   const summary = useQuery({ queryKey: ['users', 'summary', role], queryFn: async () => {
     const [all, active, linked, pending] = await Promise.all([
@@ -86,7 +87,7 @@ export function UsersTable({ role, title, description }: { role?: RoleKey; title
 
   const columns: Column<User>[] = [
     { key: 'name', header: 'Xodim', cell: (u) => <UserCell name={u.fullName} sub={u.position ?? u.email ?? u.phone} avatarUrl={u.avatarUrl} /> },
-    ...(!role ? [{ key: 'role', header: 'Rol', cell: (u: User) => <Badge variant="primary">{ROLE_LABELS[u.role.key]}</Badge> } as Column<User>] : []),
+    ...(!role ? [{ key: 'role', header: 'Rol', cell: (u: User) => <Badge variant="primary">{u.role.name || ROLE_LABELS[u.role.key]}</Badge> } as Column<User>] : []),
     { key: 'branch', header: 'Filial', hideBelow: 'md', cell: (u) => <span className="text-sm">{u.branch?.name ?? <span className="text-muted-foreground">—</span>}{u.department && <span className="text-muted-foreground block text-xs">{u.department.name}</span>}</span> },
     { key: 'contact', header: 'Aloqa', hideBelow: 'lg', cell: (u) => <span className="text-muted-foreground text-xs">{u.phone ?? '—'}<br />{u.email ?? ''}</span> },
     { key: 'tg', header: 'Telegram', hideBelow: 'sm', cell: (u) => u.telegramId ? <Badge variant="info"><Send /> {u.telegramUsername ? '@' + u.telegramUsername : 'ulangan'}</Badge> : <Badge variant="muted">ulanmagan</Badge> },
@@ -129,7 +130,7 @@ export function UsersTable({ role, title, description }: { role?: RoleKey; title
 
       <FilterBar>
         <SearchInput value={search} onChange={setSearch} placeholder="Ism, email, telefon…" />
-        {!role && <FilterSelect value={roleF} onChange={setRoleF} allLabel="Barcha rollar" options={(Object.keys(ROLE_LABELS) as RoleKey[]).map((r) => ({ value: r, label: ROLE_LABELS[r] }))} />}
+        {!role && <FilterSelect value={roleF} onChange={setRoleF} allLabel="Barcha rollar" options={(rolesQ.data ?? []).filter((r) => !['PARENT', 'STUDENT'].includes(r.key)).map((r) => ({ value: r.id, label: `${r.name} (${r._count.users})` }))} />}
         <FilterSelect value={status} onChange={setStatus} allLabel="Barcha holatlar" options={(Object.keys(USER_STATUS) as UserStatus[]).map((s) => ({ value: s, label: USER_STATUS[s].label }))} />
         {!is('DIRECTOR') && <FilterSelect value={branchId} onChange={setBranchId} allLabel="Barcha filiallar" options={(branches.data ?? []).map((b) => ({ value: b.id, label: b.name }))} />}
         <FilterSelect value={telegram} onChange={setTelegram} allLabel="Telegram: barchasi" options={[{ value: 'linked', label: 'Ulangan' }, { value: 'unlinked', label: 'Ulanmagan' }]} className="sm:w-40" />

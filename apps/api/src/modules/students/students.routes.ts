@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import dayjs from 'dayjs';
+import ExcelJS from 'exceljs';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, requirePermission } from '../../middleware/auth.js';
 import { asyncHandler } from '../../middleware/error.js';
@@ -128,6 +129,35 @@ studentsRouter.get(
       : [];
     const debtMap = new Map(debts.map((d) => [d.studentId, Number(d._sum.total ?? 0) - Number(d._sum.paid ?? 0)]));
     res.json(serialize(paged(items.map((s) => ({ ...s, debt: debtMap.get(s.id) ?? 0 })), total, p as Pagination)));
+  }),
+);
+
+studentsRouter.get(
+  '/export',
+  requirePermission('students.view'),
+  validate(z.object({ branchId: z.string().optional(), groupId: z.string().optional(), status: z.nativeEnum(StudentStatus).optional() }), 'query'),
+  asyncHandler(async (req, res) => {
+    const p = q<{ branchId?: string; groupId?: string; status?: StudentStatus }>(req);
+    const where: Prisma.StudentWhereInput = { ...(await studentScope(actor(req))), ...(p.branchId ? { branchId: p.branchId } : {}), ...(p.groupId ? { groupId: p.groupId } : {}), status: p.status ?? 'ACTIVE' };
+    const rows = await prisma.student.findMany({ where, include, orderBy: [{ group: { name: 'asc' } }, { fullName: 'asc' }] });
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'TARGET INTERNATIONAL SCHOOL';
+    const ws = wb.addWorksheet("O'quvchilar");
+    ws.columns = [
+      { header: 'Kod', key: 'code', width: 20 }, { header: 'F.I.Sh', key: 'name', width: 30 }, { header: 'Guruh', key: 'group', width: 10 }, { header: 'Filial', key: 'branch', width: 16 },
+      { header: 'Telefon', key: 'phone', width: 16 }, { header: 'Ota-ona', key: 'parent', width: 28 }, { header: 'Ota-ona tel', key: 'pphone', width: 16 }, { header: 'Telegram', key: 'tg', width: 10 },
+      { header: "Oylik to'lov", key: 'fee', width: 14 }, { header: 'Chegirma %', key: 'disc', width: 10 }, { header: 'Yotoqxona', key: 'dorm', width: 22 }, { header: 'Holat', key: 'status', width: 10 }, { header: 'Qabul', key: 'enrolled', width: 12 },
+    ];
+    for (const s of rows) {
+      const pr = s.parents.find((x) => x.isPrimary) ?? s.parents[0];
+      const d = s.dormAssignment;
+      ws.addRow({ code: s.studentCode, name: s.fullName, group: s.group?.name ?? '', branch: s.branch.name, phone: s.phone ?? '', parent: pr?.parent.user.fullName ?? '', pphone: pr?.parent.user.phone ?? '', tg: pr?.parent.user.telegramId ? 'Ha' : "Yo'q", fee: Number(s.monthlyFee), disc: s.discountPercent, dorm: d ? `${d.bed.room.building.name} · ${d.bed.room.number}-xona · ${d.bed.label}` : '', status: s.status, enrolled: dayjs(s.enrolledAt).format('DD.MM.YYYY') });
+    }
+    ws.getRow(1).font = { bold: true };
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="students-${dayjs().format('YYYY-MM-DD')}.xlsx"`);
+    await wb.xlsx.write(res);
+    res.end();
   }),
 );
 

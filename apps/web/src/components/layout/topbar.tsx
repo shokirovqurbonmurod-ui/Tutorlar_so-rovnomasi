@@ -26,7 +26,7 @@ export function Topbar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout, can } = useAuth();
-  const current = NAV.find((n) => pathname === n.href || pathname.startsWith(n.href + '/'));
+  const current = [...NAV].sort((a, b) => b.href.length - a.href.length).find((n) => pathname === n.href || pathname.startsWith(n.href + '/'));
 
   const [q, setQ] = React.useState('');
   const submitSearch = (e: React.FormEvent) => {
@@ -53,7 +53,7 @@ export function Topbar() {
       </Sheet>
 
       <div className="min-w-0 flex-1">
-        <h1 className="truncate text-base font-semibold tracking-tight lg:text-lg">{current?.label ?? 'TutorSurvey'}</h1>
+        <h1 className="truncate text-base font-semibold tracking-tight lg:text-lg">{current?.label ?? 'TARGET INTERNATIONAL SCHOOL'}</h1>
       </div>
 
       {can('users.view') && (
